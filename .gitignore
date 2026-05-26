@@ -1,0 +1,23 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+.vitest-cache/
+coverage/
+*.tsbuildinfo
+
+# Client-side local configs (per-developer)
+.claude/
+.codex/
+.opencode/
+
+# Installer backups created during local dry-run / testing
+*.bak.*
+
+# Local sample artifacts (real downloaded attachments etc.)
+dist-e2e-*
+
+# Secrets fallback location
+.tapd-token
