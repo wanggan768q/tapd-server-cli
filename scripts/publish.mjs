@@ -29,6 +29,7 @@ import { dirname, join, resolve } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const DRY_RUN = process.argv.includes('--dry-run');
+const NO_OTP = process.argv.includes('--no-otp');
 
 // -------- 输出工具（简单 ANSI 颜色，Windows 终端兼容）--------
 const isTTY = process.stdout.isTTY === true;
@@ -229,6 +230,8 @@ async function doPublish(version) {
   let otp;
   if (DRY_RUN) {
     info('dry-run 模式：跳过 OTP 提示');
+  } else if (NO_OTP) {
+    info('--no-otp：跳过 OTP 提示（假定账号 2FA 已关闭或不要求 publish OTP）');
   } else {
     otp = await promptOtp();
   }
