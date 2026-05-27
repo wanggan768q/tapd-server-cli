@@ -76,19 +76,27 @@ async function promptOtp() {
     output: process.stdout,
     terminal: true,
   });
+  // muted 路径：rl.question 调用时 prompt 已被 readline 写出，之后用户键入的字符
+  // 才进入 _writeToOutput。所以仅在 question 触发后才打开 muted。
   const rlInternal = rl;
   const origWrite = rlInternal._writeToOutput?.bind(rl);
   let muted = false;
   if (origWrite) {
     rlInternal._writeToOutput = (chunk) => {
-      if (!muted) origWrite(chunk);
+      if (muted) return;
+      origWrite(chunk);
     };
   }
   try {
-    process.stdout.write('请输入 npm OTP（6 位数字，从你的 Authenticator app 取）: ');
-    muted = true;
-    const answer = await new Promise((r) => rl.question('', r));
-    muted = false;
+    const answer = await new Promise((r) => {
+      // rl.question 自己把 prompt 文本写到 output；不要再用 stdout.write 写一次
+      rl.question('请输入 npm OTP（6 位数字，从你的 Authenticator app 取）: ', (ans) => {
+        muted = false;
+        r(ans);
+      });
+      // question 把 prompt 写完后立刻进入 muted；用户接下来键入的字符不回显
+      muted = true;
+    });
     process.stdout.write('\n');
     const trimmed = answer.trim();
     if (!/^\d{6}$/.test(trimmed)) {
