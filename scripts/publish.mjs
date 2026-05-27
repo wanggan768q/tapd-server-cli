@@ -200,6 +200,22 @@ function runPipeline() {
   ok('全部检查通过');
 }
 
+function checkNpmLogin() {
+  // dry-run 也跑，提前发现没登录的尴尬
+  try {
+    const who = tryRun('npm', [
+      'whoami',
+      '--registry=https://registry.npmjs.org/',
+    ]);
+    info(`已登录 npm 官方 registry：${who}`);
+  } catch (e) {
+    throw new Error(
+      'npm 官方 registry 未登录。请先 `npm login --registry=https://registry.npmjs.org/` 完成登录，然后重跑。\n' +
+        `底层错误：${e.message.split('\n')[0]}`,
+    );
+  }
+}
+
 async function doPublish(version) {
   step('5/6 npm publish');
   let otp;
@@ -208,7 +224,15 @@ async function doPublish(version) {
   } else {
     otp = await promptOtp();
   }
-  const args = ['publish', '--access', 'public', '--provenance'];
+  // 强制使用 npm 官方 registry，避免本地 .npmrc 把 registry 指向镜像（如腾讯/淘宝）
+  // 导致 publish 失败或发到错误的地方。
+  const args = [
+    'publish',
+    '--registry=https://registry.npmjs.org/',
+    '--access',
+    'public',
+    '--provenance',
+  ];
   if (DRY_RUN) args.push('--dry-run');
   if (otp) args.push(`--otp=${otp}`);
   // 关键：用 spawn 不打印 args（OTP 不能出现在 stdout 日志里）
@@ -271,6 +295,7 @@ async function main() {
   checkRemoteSync();
   const { tagName, localExists, remoteExists } = checkTag(version);
   runPipeline();
+  checkNpmLogin();
 
   if (!DRY_RUN) {
     const proceed = await confirm(
