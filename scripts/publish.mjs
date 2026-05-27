@@ -44,7 +44,9 @@ function run(cmd, args, opts = {}) {
     cwd: REPO_ROOT,
     stdio: opts.captureOutput ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     env: { ...process.env, ...(opts.env || {}) },
-    shell: false,
+    // Windows 下 npm/git 是 .cmd / .exe，spawn 默认 shell:false 找不到。
+    // 用 shell:true 让 cmd.exe 帮我们解析 PATH 与扩展名。
+    shell: process.platform === 'win32',
   });
   if (r.status !== 0) {
     const stderr = r.stderr ? r.stderr.toString('utf8') : '';
@@ -215,7 +217,7 @@ async function doPublish(version) {
   const r = spawnSync('npm', args, {
     cwd: REPO_ROOT,
     stdio: 'inherit',
-    shell: false,
+    shell: process.platform === 'win32',
   });
   if (r.status !== 0) {
     throw new Error(`npm publish 失败（exit ${r.status}）`);
