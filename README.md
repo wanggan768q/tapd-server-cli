@@ -12,7 +12,7 @@
 ## 特性
 
 - **个人令牌零配置**：仅 `TAPD_TOKEN` 一个环境变量即可启动，不需要注册 TAPD 应用。
-- **一键安装到 MCP 客户端**：`npx tapd-server-cli install <claude-code|codex|opencode|cursor>` 自动写入对应客户端的 MCP 配置。
+- **一键安装到 MCP 客户端**：`npx tapd-server-cli install` 弹出 checkbox 多选 Claude Code / Codex / OpenCode / Cursor（也可命令行显式列出多家），自动写入对应客户端的 MCP 配置。
 - **Slash 命令向导**：在客户端里输入 `/mcp__tapd__setup` 一键完成 PAT 验证、cookie 登录、附件下载工具装配。
 - **基于令牌的权限按需暴露**：仅对令牌真正可访问的 workspace 暴露 `workspace_id` 参数枚举。
 - **资源覆盖**：stories / bugs / tasks / iterations / releases / timesheets / comments / attachments / workflows / users / categories / modules / custom-fields。
@@ -31,19 +31,31 @@
 
 ## 快速开始（推荐：一键安装）
 
-挑你用的客户端跑一条命令：
+最省事的形态——在 TTY 终端跑零参，按空格挑想装的客户端：
 
 ```bash
-npx -y tapd-server-cli install claude-code   # Claude Code
-npx -y tapd-server-cli install codex         # Codex
-npx -y tapd-server-cli install opencode      # OpenCode
-npx -y tapd-server-cli install cursor        # Cursor
+npx -y tapd-server-cli install
+```
+
+会弹出一个 checkbox 多选界面，列出 Claude Code / Codex / OpenCode / Cursor。**空格切换、回车确认**，可以一次选多家。
+
+也可以在命令行直接显式列出客户端（跳过交互、CI 友好）：
+
+```bash
+# 单家（向后兼容旧用法）
+npx -y tapd-server-cli install claude-code
+
+# 多家（一次安装，PAT 只输入一次）
+npx -y tapd-server-cli install claude-code codex
+npx -y tapd-server-cli install claude-code codex opencode cursor
 ```
 
 命令会：
-1. 交互式提示输入 TAPD 个人访问令牌（隐藏输入，**不留 shell history**）
+1. 交互式提示输入 TAPD 个人访问令牌一次，复用给所有目标客户端（隐藏输入，**不留 shell history**）
 2. 把 `mcpServers.tapd` 条目写入对应客户端的配置文件（写前自动备份到 `.bak.<timestamp>`）
-3. 提示你重启客户端
+3. 输出每家结果汇总（`✔ wrote` / `= no-op` / `✗ failed`），并提示重启客户端
+
+任意一家失败时不会中断其他家，最后整体退出码为非零。
 
 然后**在客户端新会话里输入 `/mcp__tapd__setup`**，根据向导一路确认，登录 TAPD 后即装配完毕。
 
@@ -51,18 +63,20 @@ npx -y tapd-server-cli install cursor        # Cursor
 
 ### `--dry-run` 预览
 
-不写文件，只打印将写入的内容：
+不写文件，只打印将写入的内容（单家/多家均支持）：
 
 ```bash
 npx -y tapd-server-cli install claude-code --dry-run
+npx -y tapd-server-cli install claude-code codex --dry-run
 ```
 
 ### 非 tty / CI 场景
 
-通过 `TAPD_TOKEN` env 提供令牌，跳过交互式输入：
+非 TTY 环境下零参会直接报错以保护脚本。请通过 `TAPD_TOKEN` env 提供令牌、并显式列出客户端：
 
 ```bash
 TAPD_TOKEN=<your-pat> npx -y tapd-server-cli install claude-code
+TAPD_TOKEN=<your-pat> npx -y tapd-server-cli install claude-code codex
 ```
 
 ## 直接运行 server（无 install）

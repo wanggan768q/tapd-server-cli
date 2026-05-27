@@ -6,24 +6,47 @@ import type { CliArgs } from './config.js';
  * CLI 解析结果。`mode` 区分两种入口：
  *   - 'server'：启动 MCP server（default action，含 CliArgs 覆盖）
  *   - 'install'：写客户端配置文件，由 installer 模块接管
+ *
+ * `install` 子命令的 `clients` 字段：
+ *   - 长度 ≥ 1：用户已显式指定一个或多个客户端
+ *   - 长度 === 0：用户未指定，由调用方根据 TTY 决定走交互式选择或报错
  */
 export type ParsedCli =
   | { mode: 'server'; args: CliArgs }
-  | { mode: 'install'; client: string; dryRun: boolean };
+  | { mode: 'install'; clients: string[]; dryRun: boolean };
 
 const SUPPORTED_CLIENTS = ['claude-code', 'codex', 'opencode', 'cursor'] as const;
 
 const PACKAGE_VERSION = '0.1.0';
 
 /**
+ * `install` 子命令解析阶段抛出的、对外可识别的错误。
+ *
+ * 被 src/index.ts 的顶层 catch 捕获后映射为 exit code 2（"未识别的客户端"），
+ * 避免印出 commander 的内部堆栈。
+ */
+export class UnknownClientError extends Error {
+  readonly client: string;
+  readonly supported: readonly string[];
+  constructor(client: string, supported: readonly string[]) {
+    super(`未识别的客户端 "${client}"。支持的值：${supported.join(' / ')}`);
+    this.name = 'UnknownClientError';
+    this.client = client;
+    this.supported = supported;
+  }
+}
+
+/**
  * 解析 argv。
  *
  * 形态：
- *   tapd-server-cli                          → mode=server（启动）
- *   tapd-server-cli --token X --api-base Y   → mode=server（带覆盖）
- *   tapd-server-cli install <client>         → mode=install
- *   tapd-server-cli install <client> --dry-run
- *   tapd-server-cli --help / --version       → 由 commander 直接退出
+ *   tapd-server-cli                                  → mode=server（启动）
+ *   tapd-server-cli --token X --api-base Y           → mode=server（带覆盖）
+ *   tapd-server-cli install                          → mode=install, clients=[]（由调用方决定走交互或报错）
+ *   tapd-server-cli install <client>                 → mode=install, clients=[<client>]
+ *   tapd-server-cli install <c1> <c2> [<c3> ...]     → mode=install, clients=[c1,c2,...]
+ *   tapd-server-cli install <c1> <c2> --dry-run      → mode=install, dryRun=true
+ *   tapd-server-cli --help / --version               → 由 commander 直接退出
  */
 export function parseCli(argv: readonly string[]): ParsedCli {
   const root = new Command()
@@ -44,29 +67,30 @@ export function parseCli(argv: readonly string[]): ParsedCli {
     .allowExcessArguments(false)
     .exitOverride();
 
-  let installResult: { client: string; dryRun: boolean } | undefined;
+  let installResult: { clients: string[]; dryRun: boolean } | undefined;
 
   root
-    .command('install <client>')
+    .command('install [clients...]')
     .description(
-      `一键写入 MCP 客户端配置文件。<client> 取值：${SUPPORTED_CLIENTS.join(' / ')}`,
+      `一键写入 MCP 客户端配置文件。可选传零个或多个 client；零参且在 TTY 下会弹出多选界面（空格选择，回车确认）。\n` +
+        `<client> 取值：${SUPPORTED_CLIENTS.join(' / ')}`,
     )
     .option('--dry-run', '只打印将写入的目标路径与内容，不实际写入文件')
     .allowExcessArguments(false)
-    .action((client: string, opts: { dryRun?: boolean }) => {
-      if (!SUPPORTED_CLIENTS.includes(client as (typeof SUPPORTED_CLIENTS)[number])) {
-        // 让 commander 进入异常路径：throw 后 root.parse 抛出
-        throw new Error(
-          `未识别的客户端 "${client}"。支持的值：${SUPPORTED_CLIENTS.join(' / ')}`,
-        );
+    .action((clients: string[] | undefined, opts: { dryRun?: boolean }) => {
+      const list = clients ?? [];
+      for (const client of list) {
+        if (!SUPPORTED_CLIENTS.includes(client as (typeof SUPPORTED_CLIENTS)[number])) {
+          throw new UnknownClientError(client, SUPPORTED_CLIENTS);
+        }
       }
-      installResult = { client, dryRun: !!opts.dryRun };
+      installResult = { clients: list, dryRun: !!opts.dryRun };
     });
 
   root.parse(argv as string[], { from: 'user' });
 
   if (installResult) {
-    return { mode: 'install', client: installResult.client, dryRun: installResult.dryRun };
+    return { mode: 'install', clients: installResult.clients, dryRun: installResult.dryRun };
   }
 
   const opts = root.opts();
@@ -87,7 +111,7 @@ export function parseCli(argv: readonly string[]): ParsedCli {
 export function parseCliArgs(argv: readonly string[]): CliArgs {
   const parsed = parseCli(argv);
   if (parsed.mode !== 'server') {
-    // 走到这里说明调用方还没接 install 路由，但用户输入了 install <client>
+    // 走到这里说明调用方还没接 install 路由，但用户输入了 install 子命令
     throw new Error('install 子命令需通过 parseCli + installer 模块处理');
   }
   return parsed.args;

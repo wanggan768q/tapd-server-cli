@@ -13,9 +13,15 @@
  */
 
 import { loadToken } from './auth/token.js';
-import { parseCli } from './cli.js';
+import { parseCli, UnknownClientError } from './cli.js';
 import { ConfigError, EXIT_CODE_CONFIG, resolveConfig } from './config.js';
-import { runInstall } from './installer/flow.js';
+import { ALL_ADAPTERS, runInstall } from './installer/flow.js';
+import {
+  NoClientsSelectedError,
+  NonInteractiveNoClientError,
+  resolveClients,
+  UserCancelledError,
+} from './installer/select-clients.js';
 import { createLogger } from './runtime/logger.js';
 import { buildServer } from './runtime/server.js';
 import { bindHttp, bindStdio } from './runtime/transports.js';
@@ -27,7 +33,31 @@ async function main() {
   const parsed = parseCli(process.argv.slice(2));
 
   if (parsed.mode === 'install') {
-    const result = await runInstall({ client: parsed.client, dryRun: parsed.dryRun });
+    let clients: string[];
+    try {
+      clients = await resolveClients(parsed.clients, {
+        adapters: Object.values(ALL_ADAPTERS),
+      });
+    } catch (err) {
+      if (err instanceof NonInteractiveNoClientError) {
+        process.stderr.write(`${err.message}\n`);
+        process.stderr.write(
+          '示例：tapd-server-cli install claude-code codex --dry-run\n',
+        );
+        process.exit(2);
+      }
+      if (err instanceof NoClientsSelectedError) {
+        process.stderr.write(`${err.message}\n`);
+        process.exit(1);
+      }
+      if (err instanceof UserCancelledError) {
+        process.stderr.write(`${err.message}\n`);
+        process.exit(130);
+      }
+      throw err;
+    }
+
+    const result = await runInstall({ clients, dryRun: parsed.dryRun });
     process.exit(result.exitCode);
   }
 
@@ -108,6 +138,11 @@ main().catch((err) => {
   if (err instanceof ConfigError) {
     process.stderr.write(`配置错误: ${err.message}\n`);
     process.exit(EXIT_CODE_CONFIG);
+  }
+  if (err instanceof UnknownClientError) {
+    // install 子命令的"未识别客户端"——按 spec exit code 2，且不打堆栈
+    process.stderr.write(`${err.message}\n`);
+    process.exit(2);
   }
   if (err && typeof err === 'object' && 'code' in (err as Record<string, unknown>)) {
     // commander 的 exitOverride 错误

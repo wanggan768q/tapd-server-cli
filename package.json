@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@iarna/toml": "^2.2.5",
+    "@inquirer/checkbox": "^5.2.0",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "commander": "^12.1.0",
     "p-limit": "^6.1.0",
