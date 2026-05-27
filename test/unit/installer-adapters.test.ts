@@ -126,3 +126,105 @@ describe('cursor adapter', () => {
     expect(p).toMatch(/\.cursor\/mcp\.json$/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// hasTapdEntry / removeEntry —— uninstall 路径
+// ─────────────────────────────────────────────────────────────────────────
+
+const MCP_KEY_ADAPTERS = [
+  { name: 'claude-code', adapter: claudeCodeAdapter, key: 'mcpServers' },
+  { name: 'opencode', adapter: opencodeAdapter, key: 'mcpServers' },
+  { name: 'cursor', adapter: cursorAdapter, key: 'mcpServers' },
+  { name: 'codex', adapter: codexAdapter, key: 'mcp_servers' },
+] as const;
+
+describe.each(MCP_KEY_ADAPTERS)('$name adapter — hasTapdEntry', ({ adapter, key }) => {
+  it('returns false for undefined', () => {
+    expect(adapter.hasTapdEntry(undefined)).toBe(false);
+  });
+
+  it('returns false for empty object', () => {
+    expect(adapter.hasTapdEntry({})).toBe(false);
+  });
+
+  it('returns false when mcp section is empty', () => {
+    expect(adapter.hasTapdEntry({ [key]: {} })).toBe(false);
+  });
+
+  it('returns false when mcp section has only other servers', () => {
+    expect(adapter.hasTapdEntry({ [key]: { other: { command: 'foo' } } })).toBe(false);
+  });
+
+  it('returns false when tapd key is null', () => {
+    expect(adapter.hasTapdEntry({ [key]: { tapd: null } })).toBe(false);
+  });
+
+  it('returns true when tapd is a normal object', () => {
+    expect(
+      adapter.hasTapdEntry({ [key]: { tapd: { command: 'npx', args: ['-y'], env: {} } } }),
+    ).toBe(true);
+  });
+
+  it('returns true when tapd is a non-standard string (loose detection)', () => {
+    expect(adapter.hasTapdEntry({ [key]: { tapd: 'deprecated' } })).toBe(true);
+  });
+
+  it('returns false when input is not an object', () => {
+    expect(adapter.hasTapdEntry(null as unknown)).toBe(false);
+    expect(adapter.hasTapdEntry('string' as unknown)).toBe(false);
+  });
+});
+
+describe.each(MCP_KEY_ADAPTERS)('$name adapter — removeEntry', ({ adapter, key }) => {
+  it('removes only tapd key, preserves other servers', () => {
+    const existing = {
+      [key]: {
+        tapd: { command: 'npx', args: ['-y'], env: { TAPD_TOKEN: 't' } },
+        gitlab: { command: 'gl-mcp', args: [] },
+      },
+    };
+    const result = adapter.removeEntry(existing) as Record<string, unknown>;
+    const mcp = result[key] as Record<string, unknown>;
+    expect(mcp.tapd).toBeUndefined();
+    expect(mcp.gitlab).toEqual({ command: 'gl-mcp', args: [] });
+  });
+
+  it('preserves top-level fields outside mcp section', () => {
+    const existing = {
+      [key]: { tapd: { command: 'npx' } },
+      projects: { '/path': { foo: 1 } },
+      telemetry: false,
+    };
+    const result = adapter.removeEntry(existing) as Record<string, unknown>;
+    expect(result.projects).toEqual({ '/path': { foo: 1 } });
+    expect(result.telemetry).toBe(false);
+  });
+
+  it('leaves mcp section as empty object when tapd was the only entry', () => {
+    const existing = { [key]: { tapd: { command: 'npx' } } };
+    const result = adapter.removeEntry(existing) as Record<string, unknown>;
+    expect(result[key]).toEqual({});
+  });
+
+  it('does not mutate the input object (pure)', () => {
+    const existing = {
+      [key]: {
+        tapd: { command: 'npx' },
+        other: { command: 'foo' },
+      },
+      top: 'value',
+    };
+    const snapshot = JSON.parse(JSON.stringify(existing));
+    adapter.removeEntry(existing);
+    expect(existing).toEqual(snapshot);
+  });
+
+  it('called multiple times yields the same result', () => {
+    const existing = {
+      [key]: { tapd: { command: 'npx' }, other: { command: 'foo' } },
+    };
+    const r1 = adapter.removeEntry(existing);
+    const r2 = adapter.removeEntry(existing);
+    expect(r1).toEqual(r2);
+  });
+});

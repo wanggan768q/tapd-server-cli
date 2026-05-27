@@ -14,12 +14,14 @@ import type { ClientAdapter } from './adapter.js';
 
 export class NonInteractiveNoClientError extends Error {
   readonly supported: readonly string[];
-  constructor(supported: readonly string[]) {
+  readonly commandName: string;
+  constructor(supported: readonly string[], commandName: string = 'install') {
     super(
-      `非交互环境下必须显式指定客户端。支持的值：${supported.join(' / ')}`,
+      `非交互环境下必须显式指定客户端。支持的值:${supported.join(' / ')}`,
     );
     this.name = 'NonInteractiveNoClientError';
     this.supported = supported;
+    this.commandName = commandName;
   }
 }
 
@@ -49,14 +51,24 @@ export interface PromptCheckboxFn {
 }
 
 export interface ResolveClientsOptions {
-  /** 已知支持的 adapter 集合，用于渲染 checkbox 选项 */
+  /** 已知支持的 adapter 集合,用于渲染 checkbox 选项 */
   readonly adapters: readonly ClientAdapter[];
-  /** stdin 是否为 TTY；默认读 process.stdin.isTTY */
+  /** stdin 是否为 TTY;默认读 process.stdin.isTTY */
   readonly isStdinTty?: boolean;
-  /** stdout 是否为 TTY；默认读 process.stdout.isTTY */
+  /** stdout 是否为 TTY;默认读 process.stdout.isTTY */
   readonly isStdoutTty?: boolean;
-  /** 注入的 prompt（默认 @inquirer/checkbox） */
+  /** 注入的 prompt(默认 @inquirer/checkbox) */
   readonly prompt?: PromptCheckboxFn;
+  /**
+   * 交互式 prompt 的 message 文案;默认为 install 文案。
+   * uninstall 路径传入"选择要卸载的 MCP 客户端..." 等对称文案。
+   */
+  readonly message?: string;
+  /**
+   * 当前子命令名(用于 NonInteractiveNoClientError 中渲染示例)。
+   * 默认 'install',uninstall 路径传 'uninstall'。
+   */
+  readonly commandName?: string;
 }
 
 /**
@@ -122,7 +134,10 @@ export async function resolveClients(
     opts.isStdoutTty ?? Boolean((process.stdout as { isTTY?: boolean }).isTTY);
 
   if (!isStdinTty || !isStdoutTty) {
-    throw new NonInteractiveNoClientError(opts.adapters.map((a) => a.key));
+    throw new NonInteractiveNoClientError(
+      opts.adapters.map((a) => a.key),
+      opts.commandName ?? 'install',
+    );
   }
 
   const prompt = opts.prompt ?? defaultPrompt;
@@ -134,7 +149,7 @@ export async function resolveClients(
   let selected: readonly string[];
   try {
     selected = await prompt({
-      message: '选择要安装到的 MCP 客户端（空格选择，回车确认）',
+      message: opts.message ?? '选择要安装到的 MCP 客户端(空格选择,回车确认)',
       choices,
     });
   } catch (err) {

@@ -69,4 +69,20 @@ export const opencodeAdapter: ClientAdapter = {
     const next = buildTapdEntry(tapdEnv);
     return `command=${next.command} args=${next.args.join(' ')} env_keys=${Object.keys(next.env).join(',')}`;
   },
+  hasTapdEntry(existing) {
+    if (!existing || typeof existing !== 'object') return false;
+    const cfg = existing as OpenCodeConfig;
+    const mcp = cfg.mcpServers;
+    if (!mcp || typeof mcp !== 'object') return false;
+    return mcp.tapd != null;
+  },
+  removeEntry(existing) {
+    if (!existing || typeof existing !== 'object') return existing;
+    const cfg = existing as OpenCodeConfig;
+    const mcp = cfg.mcpServers as Record<string, unknown> | undefined;
+    if (!mcp || typeof mcp !== 'object') return { ...cfg };
+    const nextMcp: Record<string, unknown> = { ...mcp };
+    delete nextMcp.tapd;
+    return { ...cfg, mcpServers: nextMcp };
+  },
 };

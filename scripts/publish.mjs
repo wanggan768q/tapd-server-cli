@@ -9,10 +9,11 @@
  * 流程：
  *   1) 校验本地 git 干净、当前在 main 分支、与 origin/main 一致
  *   2) 读 package.json version，校验 tag 与版本号一致（若 tag 已存在）
- *   3) npm ci → typecheck → test → build
- *   4) 提示输入 npm OTP（6 位数字，从你的 Authenticator app 取）
- *   5) npm publish --access public --provenance --otp=<...>
- *   6) push tag 到 origin（让 GitHub Release 也建出来 —— 由 CI 触发或本地兜底）
+ *   3) 校验 CHANGELOG.md 顶部含 [<version>] 段（硬门禁，缺则拒绝发版）
+ *   4) npm ci → typecheck → test → build
+ *   5) 提示输入 npm OTP（6 位数字，从你的 Authenticator app 取）
+ *   6) npm publish --access public --provenance --otp=<...>
+ *   7) push tag 到 origin（让 GitHub Release 也建出来 —— 由 CI 触发或本地兜底）
  *
  * 安全：
  *   - OTP 通过 stdin muted 输入，不进 shell history、不出现在 ps / 进程列表里
@@ -21,10 +22,13 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+
+import { extractChangelogSection } from './extract-changelog.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
@@ -127,8 +131,37 @@ function readVersion() {
   return { name: pkg.name, version: pkg.version };
 }
 
+/**
+ * 从 CHANGELOG.md 提取指定版本的 release notes 段。
+ *
+ * 实际抽取逻辑在 scripts/extract-changelog.mjs(同时被 CI 复用,确保
+ * 本地与 CI 行为一致;不再维护两份并行实现)。这里只做发版前置校验:
+ * 缺少版本段 / 段正文为空 → 抛错。
+ */
+function checkChangelog(version) {
+  step('3/7 校验 CHANGELOG.md');
+  const path = join(REPO_ROOT, 'CHANGELOG.md');
+  if (!existsSync(path)) {
+    throw new Error(
+      `CHANGELOG.md 不存在。请创建并在顶部添加 [${version}] 版本段后重试。\n` +
+        `参考格式:https://keepachangelog.com/zh-CN/1.1.0/`,
+    );
+  }
+  const section = extractChangelogSection(version, REPO_ROOT);
+  if (!section) {
+    throw new Error(
+      `CHANGELOG.md 顶部缺少 [${version}] 版本段(或该段正文为空)。\n` +
+        `请在 CHANGELOG.md 中添加形如 "## [${version}] - YYYY-MM-DD" 的标题,` +
+        `下面按 Added / Changed / Fixed 等分组列出本次变更后再重试。`,
+    );
+  }
+  const lineCount = section.body.split('\n').length;
+  ok(`CHANGELOG.md 含 [${version}] 段(${lineCount} 行 release notes)`);
+  return section;
+}
+
 function checkGitClean() {
-  step('1/6 检查 git 状态');
+  step('1/7 检查 git 状态');
   const status = tryRun('git', ['status', '--porcelain']);
   if (status.length > 0) {
     fail('工作树不干净：');
@@ -143,7 +176,7 @@ function checkGitClean() {
 }
 
 function checkRemoteSync() {
-  step('2/6 检查与 origin 同步');
+  step('2/7 检查与 origin 同步');
   try {
     tryRun('git', ['fetch', '--quiet', 'origin']);
   } catch (e) {
@@ -168,7 +201,7 @@ function checkRemoteSync() {
 }
 
 function checkTag(version) {
-  step('3/6 检查 tag 状态');
+  step('4/7 检查 tag 状态');
   const tagName = `v${version}`;
   let localExists = false;
   let remoteSha;
@@ -197,7 +230,7 @@ function checkTag(version) {
 }
 
 function runPipeline() {
-  step('4/6 构建与测试');
+  step('5/7 构建与测试');
   info('npm ci');
   run('npm', ['ci']);
   info('npm run typecheck');
@@ -226,7 +259,7 @@ function checkNpmLogin() {
 }
 
 async function doPublish(version) {
-  step('5/6 npm publish');
+  step('6/7 npm publish');
   let otp;
   if (DRY_RUN) {
     info('dry-run 模式：跳过 OTP 提示');
@@ -265,7 +298,7 @@ async function doPublish(version) {
 }
 
 function ensureTagAndPush(tagName, localExists, remoteExists) {
-  step('6/6 创建 + 推送 git tag');
+  step('7/7 创建 + 推送 git tag');
   if (DRY_RUN) {
     info('dry-run 模式：跳过 tag 创建/推送');
     return;
@@ -283,16 +316,29 @@ function ensureTagAndPush(tagName, localExists, remoteExists) {
   ok('tag 已就位');
 }
 
-function postPublishHints(name, version) {
+function postPublishHints(name, version, changelogSection) {
   console.log();
   console.log(c('1', '完成！'));
   console.log();
   console.log(`  npm view ${name} version    # 应输出 ${version}`);
   console.log(`  npm view ${name}            # 完整 metadata`);
   console.log();
-  console.log('GitHub Release 在 CI 端会通过 release.yml 自动创建（如果 tag 触发了）。');
-  console.log('如果 CI 不通，可以手动：');
-  console.log(`  gh release create v${version} --generate-notes`);
+  // 把 release notes 落到临时文件,方便用户在 gh CLI 兜底创建 release 时直接 --notes-file
+  let notesPath;
+  if (changelogSection) {
+    const tmp = mkdtempSync(join(tmpdir(), 'tapd-release-notes-'));
+    notesPath = join(tmp, `v${version}.md`);
+    writeFileSync(notesPath, changelogSection.body + '\n', 'utf8');
+  }
+  console.log('GitHub Release 在 CI 端会通过 release.yml 自动创建(如果 tag 触发了)。');
+  console.log('如果 CI 不通,可以手动:');
+  if (notesPath) {
+    console.log(`  gh release create v${version} --notes-file ${notesPath}`);
+    console.log();
+    console.log(`(release notes 已从 CHANGELOG.md 提取并写入 ${notesPath})`);
+  } else {
+    console.log(`  gh release create v${version} --generate-notes`);
+  }
   console.log();
 }
 
@@ -304,23 +350,24 @@ async function main() {
 
   checkGitClean();
   checkRemoteSync();
+  const changelogSection = checkChangelog(version);
   const { tagName, localExists, remoteExists } = checkTag(version);
   runPipeline();
   checkNpmLogin();
 
   if (!DRY_RUN) {
     const proceed = await confirm(
-      `准备 npm publish ${name}@${version}。继续？`,
+      `准备 npm publish ${name}@${version}。继续?`,
     );
     if (!proceed) {
-      info('用户取消，已退出');
+      info('用户取消,已退出');
       process.exit(0);
     }
   }
 
   await doPublish(version);
   ensureTagAndPush(tagName, localExists, remoteExists);
-  postPublishHints(name, version);
+  postPublishHints(name, version, changelogSection);
 }
 
 main().catch((err) => {

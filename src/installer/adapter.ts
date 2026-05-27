@@ -24,6 +24,30 @@ export interface ClientAdapter {
   describeCurrent(existing: unknown | undefined): string | undefined;
   /** 拿出本次将写入的 tapd 条目摘要 */
   describeNext(tapdEnv: Record<string, string>): string;
+
+  /**
+   * 判定当前配置是否含 tapd 条目。
+   *
+   * 纯函数,MUST 采用**宽松判定**:只要 `mcpServers.tapd`(或 `mcp_servers.tapd`)
+   * 键存在且非空(null/undefined 视作不存在),即返回 true。
+   * 这样手改坏的非标 schema 条目(如 `tapd: "deprecated"`)也能被 uninstall 正确识别。
+   *
+   * 用于 uninstall 流程的 idempotent 判定:false → noop;true → 走 removeEntry。
+   */
+  hasTapdEntry(existing: unknown | undefined): boolean;
+
+  /**
+   * 返回移除 tapd 条目后的新配置对象。
+   *
+   * 纯函数,MUST NOT 原地修改 `existing`。
+   * - 仅删除 `mcpServers.tapd`(或 `mcp_servers.tapd`)这一个 key;
+   * - 保留同节下其它 server 条目(如 `mcpServers.gitlab`);
+   * - 保留顶层其它字段(如 Claude Code 的 `projects`);
+   * - 若移除后 `mcpServers` / `mcp_servers` 变成空对象,保留空对象 `{}`(保守策略)。
+   *
+   * 仅在 `hasTapdEntry(existing) === true` 时调用;不需要处理 `existing === undefined`。
+   */
+  removeEntry(existing: unknown): unknown;
 }
 
 /**

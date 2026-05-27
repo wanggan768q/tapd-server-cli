@@ -142,4 +142,61 @@ describe('resolveClients — non-TTY zero-arg fails fast', () => {
       expect(e.message).toContain('cursor');
     }
   });
+
+  it('error carries default commandName="install" when not specified', async () => {
+    try {
+      await resolveClients([], {
+        adapters: ADAPTERS,
+        isStdinTty: false,
+        isStdoutTty: false,
+      });
+      throw new Error('should have thrown');
+    } catch (err) {
+      const e = err as NonInteractiveNoClientError;
+      expect(e.commandName).toBe('install');
+    }
+  });
+
+  it('error carries custom commandName when provided (uninstall path)', async () => {
+    try {
+      await resolveClients([], {
+        adapters: ADAPTERS,
+        isStdinTty: false,
+        isStdoutTty: false,
+        commandName: 'uninstall',
+      });
+      throw new Error('should have thrown');
+    } catch (err) {
+      const e = err as NonInteractiveNoClientError;
+      expect(e.commandName).toBe('uninstall');
+    }
+  });
+});
+
+describe('resolveClients — custom message', () => {
+  it('uses default install message when message not provided', async () => {
+    const prompt = vi.fn().mockResolvedValue(['claude-code']);
+    await resolveClients([], {
+      adapters: ADAPTERS,
+      isStdinTty: true,
+      isStdoutTty: true,
+      prompt,
+    });
+    const arg = prompt.mock.calls[0]?.[0] as { message: string };
+    expect(arg.message).toContain('安装');
+  });
+
+  it('uses custom message when provided (uninstall path)', async () => {
+    const prompt = vi.fn().mockResolvedValue(['claude-code']);
+    await resolveClients([], {
+      adapters: ADAPTERS,
+      isStdinTty: true,
+      isStdoutTty: true,
+      prompt,
+      message: '选择要卸载的 MCP 客户端(空格选择,回车确认)',
+    });
+    const arg = prompt.mock.calls[0]?.[0] as { message: string };
+    expect(arg.message).toBe('选择要卸载的 MCP 客户端(空格选择,回车确认)');
+    expect(arg.message).toContain('卸载');
+  });
 });

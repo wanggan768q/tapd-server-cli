@@ -27,6 +27,18 @@ jobs:
             echo "::error::tag ($TAG) does not match package.json version ($PKG)"
             exit 1
           fi
+          echo "VERSION=$TAG" >> "$GITHUB_ENV"
+
+      # 硬门禁:CHANGELOG.md 顶部必须有与本次 tag 匹配的 [<version>] 段。
+      # 抽取到 RELEASE_NOTES.md 给后续 gh release create 用。
+      # 共享 scripts/extract-changelog.mjs 的逻辑,与本地 publish.mjs 一致。
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          node scripts/extract-changelog.mjs "$VERSION" --out RELEASE_NOTES.md
+          echo "::group::Release notes for v${VERSION}"
+          cat RELEASE_NOTES.md
+          echo "::endgroup::"
 
       - run: npm ci
 
@@ -44,4 +56,4 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md

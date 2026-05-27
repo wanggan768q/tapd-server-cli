@@ -22,6 +22,7 @@ import {
   resolveClients,
   UserCancelledError,
 } from './installer/select-clients.js';
+import { runUninstall, UNINSTALL_ADAPTERS } from './installer/uninstall-flow.js';
 import { createLogger } from './runtime/logger.js';
 import { buildServer } from './runtime/server.js';
 import { bindHttp, bindStdio } from './runtime/transports.js';
@@ -37,12 +38,14 @@ async function main() {
     try {
       clients = await resolveClients(parsed.clients, {
         adapters: Object.values(ALL_ADAPTERS),
+        message: '选择要安装到的 MCP 客户端(空格选择,回车确认)',
+        commandName: 'install',
       });
     } catch (err) {
       if (err instanceof NonInteractiveNoClientError) {
         process.stderr.write(`${err.message}\n`);
         process.stderr.write(
-          '示例：tapd-server-cli install claude-code codex --dry-run\n',
+          '示例:tapd-server-cli install claude-code codex --dry-run\n',
         );
         process.exit(2);
       }
@@ -58,6 +61,41 @@ async function main() {
     }
 
     const result = await runInstall({ clients, dryRun: parsed.dryRun });
+    process.exit(result.exitCode);
+  }
+
+  if (parsed.mode === 'uninstall') {
+    let clients: string[];
+    try {
+      clients = await resolveClients(parsed.clients, {
+        adapters: Object.values(UNINSTALL_ADAPTERS),
+        message: '选择要卸载的 MCP 客户端(空格选择,回车确认)',
+        commandName: 'uninstall',
+      });
+    } catch (err) {
+      if (err instanceof NonInteractiveNoClientError) {
+        process.stderr.write(`${err.message}\n`);
+        process.stderr.write(
+          '示例:tapd-server-cli uninstall claude-code codex --dry-run\n',
+        );
+        process.exit(2);
+      }
+      if (err instanceof NoClientsSelectedError) {
+        process.stderr.write(`${err.message}\n`);
+        process.exit(1);
+      }
+      if (err instanceof UserCancelledError) {
+        process.stderr.write(`${err.message}\n`);
+        process.exit(130);
+      }
+      throw err;
+    }
+
+    const result = await runUninstall({
+      clients,
+      dryRun: parsed.dryRun,
+      purge: parsed.purge,
+    });
     process.exit(result.exitCode);
   }
 

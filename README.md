@@ -13,6 +13,7 @@
 
 - **个人令牌零配置**：仅 `TAPD_TOKEN` 一个环境变量即可启动，不需要注册 TAPD 应用。
 - **一键安装到 MCP 客户端**：`npx tapd-server-cli install` 弹出 checkbox 多选 Claude Code / Codex / OpenCode / Cursor（也可命令行显式列出多家），自动写入对应客户端的 MCP 配置。
+- **对称的卸载入口**：`npx tapd-server-cli uninstall` 同款多选界面，仅移除 `mcpServers.tapd` 节，保留同节其它 server 与文件其它字段；可加 `--purge` 一并清理本地 cookie / token 文件。
 - **Slash 命令向导**：在客户端里输入 `/mcp__tapd__setup` 一键完成 PAT 验证、cookie 登录、附件下载工具装配。
 - **基于令牌的权限按需暴露**：仅对令牌真正可访问的 workspace 暴露 `workspace_id` 参数枚举。
 - **资源覆盖**：stories / bugs / tasks / iterations / releases / timesheets / comments / attachments / workflows / users / categories / modules / custom-fields。
@@ -78,6 +79,56 @@ npx -y tapd-server-cli install claude-code codex --dry-run
 TAPD_TOKEN=<your-pat> npx -y tapd-server-cli install claude-code
 TAPD_TOKEN=<your-pat> npx -y tapd-server-cli install claude-code codex
 ```
+
+## 卸载
+
+与安装对称的撤销入口。零参 TTY 弹 checkbox 多选；显式列出客户端走非交互流程；`--dry-run` 只预览；`--purge` 额外清理本地凭据文件。**不需要输入 PAT**（卸载不读 token）。
+
+```bash
+# 交互式多选（TTY 下，空格选，回车确认）
+npx -y tapd-server-cli uninstall
+
+# 显式列出
+npx -y tapd-server-cli uninstall claude-code
+npx -y tapd-server-cli uninstall claude-code codex opencode cursor
+
+# 预览不写入
+npx -y tapd-server-cli uninstall claude-code --dry-run
+
+# 同时清理本地 cookie + token 文件（完全清零）
+npx -y tapd-server-cli uninstall claude-code --purge
+```
+
+命令会：
+1. 从对应客户端的 MCP 配置中**仅移除 `mcpServers.tapd`（或 `mcp_servers.tapd`）**节，保留同节下其它 server 条目与文件其它顶层字段；
+2. 写前自动备份原文件到 `.bak.<timestamp>`，便于回滚；
+3. 输出每家结果汇总（`✔ removed` / `= (no-op)` / `[dry-run]` / `✗ failed`）；
+4. 若启用了 `--purge`，在客户端循环结束后清理 `~/.config/tapd-mcp/cookie` 与 `~/.config/tapd-mcp/token`。
+
+### `--purge` 默认关闭
+
+不加 `--purge` 时，本地 cookie 与 token 文件保留不动 —— 这样下次重新 `install` 不需要再走一遍登录授权。如果你确认要完全清零（换机器、放弃使用、合规要求等），再加 `--purge`。
+
+未启用 `--purge` 但本地实际仍有残留文件时，汇总末尾会输出一行提示：`提示：cookie/token 文件未清除（如需清除请加 --purge）`。
+
+`--purge` 只清两个固定文件名 `cookie` 和 `token`，**不会**递归删除 `~/.config/tapd-mcp/` 目录，也不会触碰目录下其它文件。
+
+### 退出码
+
+| 场景 | exit code |
+|---|---|
+| 全部 noop / removed / dry-run，且 `--purge`（若启用）全成功 | 0 |
+| 任一客户端 failed | 1 |
+| 任一 `--purge` 文件删除失败（非 ENOENT） | 1 |
+| 未识别客户端 | 2 |
+| 非 TTY 零参 | 2 |
+| 用户取消多选（Ctrl-C） | 130 |
+
+### 注意
+
+- **TOML 注释丢失**：Codex 的 `~/.codex/config.toml` 由 `@iarna/toml` 解析后重新 stringify，会丢失原文件的注释。这与 install 同款 trade-off。如需保留注释，可从 `.bak.<timestamp>` 备份回滚后手动编辑该节。
+- **uninstall 不调 `tapd.logout` MCP 工具**：`tapd.logout` 是 server 运行时工具（需要 server 进程存在），与 CLI uninstall 路径正交。两者最终效果在 cookie 清理上一致，但走不同代码路径。
+- **npm 包不自动卸载**：`uninstall` 子命令只处理配置 + 持久化文件。如需移除全局可执行文件，自行执行 `npm uninstall -g tapd-server-cli`。
 
 ## 直接运行 server（无 install）
 
@@ -271,6 +322,7 @@ tapd.attachments.download
 - **限速**：TAPD 对短时高频下载会返回中文提示「下载过于频繁，请一分钟后再试」。客户端会归类为 `rate_limited` 错误，等约 1 分钟后再调即可。
 - **凭据等级**：cookie 等同账号凭据，**不要提交到 git、聊天工具或截图**。`~/.config/tapd-mcp/cookie` 文件 POSIX 600。
 - **撤销**：浏览器登出 TAPD 即让该 cookie 失效；或调 `tapd.logout` 主动清除 server 端文件。
+- **完整卸载**：如果你打算永久放弃使用本工具，跑 `npx -y tapd-server-cli uninstall <client> --purge` 一并清理客户端配置 + 本地 cookie + 本地 token（参见上方「卸载」章节）。
 
 
 

@@ -13,7 +13,8 @@ import type { CliArgs } from './config.js';
  */
 export type ParsedCli =
   | { mode: 'server'; args: CliArgs }
-  | { mode: 'install'; clients: string[]; dryRun: boolean };
+  | { mode: 'install'; clients: string[]; dryRun: boolean }
+  | { mode: 'uninstall'; clients: string[]; dryRun: boolean; purge: boolean };
 
 const SUPPORTED_CLIENTS = ['claude-code', 'codex', 'opencode', 'cursor'] as const;
 
@@ -68,14 +69,15 @@ export function parseCli(argv: readonly string[]): ParsedCli {
     .exitOverride();
 
   let installResult: { clients: string[]; dryRun: boolean } | undefined;
+  let uninstallResult: { clients: string[]; dryRun: boolean; purge: boolean } | undefined;
 
   root
     .command('install [clients...]')
     .description(
-      `一键写入 MCP 客户端配置文件。可选传零个或多个 client；零参且在 TTY 下会弹出多选界面（空格选择，回车确认）。\n` +
-        `<client> 取值：${SUPPORTED_CLIENTS.join(' / ')}`,
+      `一键写入 MCP 客户端配置文件。可选传零个或多个 client;零参且在 TTY 下会弹出多选界面(空格选择,回车确认)。\n` +
+        `<client> 取值:${SUPPORTED_CLIENTS.join(' / ')}`,
     )
-    .option('--dry-run', '只打印将写入的目标路径与内容，不实际写入文件')
+    .option('--dry-run', '只打印将写入的目标路径与内容,不实际写入文件')
     .allowExcessArguments(false)
     .action((clients: string[] | undefined, opts: { dryRun?: boolean }) => {
       const list = clients ?? [];
@@ -87,10 +89,44 @@ export function parseCli(argv: readonly string[]): ParsedCli {
       installResult = { clients: list, dryRun: !!opts.dryRun };
     });
 
+  root
+    .command('uninstall [clients...]')
+    .description(
+      `从 MCP 客户端配置中移除 tapd 条目。与 install 对称:可选传零个或多个 client;零参且在 TTY 下会弹出多选界面。\n` +
+        `<client> 取值:${SUPPORTED_CLIENTS.join(' / ')}\n` +
+        `--purge 额外清理 ~/.config/tapd-mcp/cookie 与 token 文件(默认保留以便再次安装)。`,
+    )
+    .option('--dry-run', '只打印将移除的目标路径与内容,不实际写入或删除文件')
+    .option('--purge', '额外清理 ~/.config/tapd-mcp/cookie 与 ~/.config/tapd-mcp/token 文件')
+    .allowExcessArguments(false)
+    .action(
+      (clients: string[] | undefined, opts: { dryRun?: boolean; purge?: boolean }) => {
+        const list = clients ?? [];
+        for (const client of list) {
+          if (!SUPPORTED_CLIENTS.includes(client as (typeof SUPPORTED_CLIENTS)[number])) {
+            throw new UnknownClientError(client, SUPPORTED_CLIENTS);
+          }
+        }
+        uninstallResult = {
+          clients: list,
+          dryRun: !!opts.dryRun,
+          purge: !!opts.purge,
+        };
+      },
+    );
+
   root.parse(argv as string[], { from: 'user' });
 
   if (installResult) {
     return { mode: 'install', clients: installResult.clients, dryRun: installResult.dryRun };
+  }
+  if (uninstallResult) {
+    return {
+      mode: 'uninstall',
+      clients: uninstallResult.clients,
+      dryRun: uninstallResult.dryRun,
+      purge: uninstallResult.purge,
+    };
   }
 
   const opts = root.opts();
