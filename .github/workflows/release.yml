@@ -64,9 +64,13 @@ jobs:
         run: |
           set -euo pipefail
           npm pack --dry-run 2>&1 | tee /tmp/pack.txt
-          if grep -E "\.claude-plugin/|\.mcp\.json|^commands/|^skills/|^openspec/|^docs/" /tmp/pack.txt; then
+          # npm pack --dry-run 输出每行格式形如 "npm notice 1.2kB commands/login.md"，
+          # 用 [[:space:]] 锚定文件名前的空白边界，避免 ^ 锚定永远不命中（早期 PR 的坑）；
+          # .claude-plugin/ 与 .mcp.json 出现在路径任意位置都算命中。
+          PATTERN='(\.claude-plugin/|[[:space:]]\.mcp\.json$|[[:space:]]commands/|[[:space:]]skills/|[[:space:]]openspec/|[[:space:]]docs/)'
+          if grep -E "$PATTERN" /tmp/pack.txt; then
             echo "::error::plugin 文件被打包进 npm 发布包，命中以下条目："
-            grep -E "\.claude-plugin/|\.mcp\.json|^commands/|^skills/|^openspec/|^docs/" /tmp/pack.txt | sed 's/^/::error::  /'
+            grep -E "$PATTERN" /tmp/pack.txt | sed 's/^/::error::  /'
             exit 1
           fi
           echo "✓ npm package clean"
