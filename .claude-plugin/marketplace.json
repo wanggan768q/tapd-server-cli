@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "tapd-server-cli",
+  "owner": {
+    "name": "wanggan768q",
+    "url": "https://github.com/wanggan768q"
+  },
+  "plugins": [
+    {
+      "name": "tapd-server-cli",
+      "source": "./",
+      "description": "腾讯 TAPD MCP server — 在 Claude Code 内读写需求/缺陷/迭代/工时/评论/附件",
+      "category": "issue-tracker",
+      "version": "0.2.0"
+    }
+  ]
+}
