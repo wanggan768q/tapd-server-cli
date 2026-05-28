@@ -13,6 +13,8 @@ import { cursorAdapter } from './adapters/cursor.js';
 import { opencodeAdapter } from './adapters/opencode.js';
 import { promptToken, TokenInputError, type PromptOptions } from './prompt.js';
 import { type ClientAdapter } from './adapter.js';
+import { preferClaudeCliInstall } from './claude-cli.js';
+import { preferCodexCliInstall } from './codex-cli.js';
 
 const ALL_ADAPTERS: Record<string, ClientAdapter> = {
   [claudeCodeAdapter.key]: claudeCodeAdapter,
@@ -138,6 +140,31 @@ export async function runInstall(opts: RunInstallOptions): Promise<RunInstallRes
         error: '未识别的客户端',
       });
       continue;
+    }
+
+    // B1：claude-code / codex 优先调官方 CLI；不可用或失败再走手写文件 fallback。
+    if (!opts.dryRun && (key === 'claude-code' || key === 'codex')) {
+      const cliResult =
+        key === 'claude-code'
+          ? await preferClaudeCliInstall(tapdEnv)
+          : await preferCodexCliInstall(tapdEnv);
+      if (cliResult.used === 'cli') {
+        const via =
+          key === 'claude-code'
+            ? '<via claude mcp add-json --scope user>'
+            : '<via codex mcp add>';
+        stdout.write(`已通过官方 CLI 注册 ${adapter.displayName}：${via}\n`);
+        results.push({
+          client: key,
+          outcome: 'wrote',
+          path: via,
+        });
+        continue;
+      }
+      if (cliResult.stderr) {
+        stdout.write(`(${adapter.displayName} CLI 不可用或失败：${cliResult.stderr.trim()})\n`);
+      }
+      // 走 fallback：继续往下到现行手写文件路径
     }
 
     try {
