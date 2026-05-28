@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit",
     "release": "node scripts/publish.mjs",
     "release:dry": "node scripts/publish.mjs --dry-run",
+    "version": "node scripts/sync-plugin-version.mjs && git add .claude-plugin/plugin.json .claude-plugin/marketplace.json",
     "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
