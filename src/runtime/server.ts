@@ -17,6 +17,7 @@ import {
 import { registerLoginTools } from '../tools/login.js';
 import { registerMetaTools } from '../tools/meta.js';
 import { registerResourceTools, type ResourceToolHandle } from '../tools/register.js';
+import { registerUpdateTool } from '../tools/update.js';
 import { registerSetupPrompt } from '../prompts/setup.js';
 
 import { maskToken } from '../auth/mask.js';
@@ -161,6 +162,8 @@ export async function buildServer(config: AppConfig, logger: Logger): Promise<Se
     fileBase: config.fileBase,
     notifyToolsChanged,
   });
+
+  registerUpdateTool(mcp);
 
   registerSetupPrompt(mcp);
 
