@@ -16,6 +16,8 @@
 
 import { spawnSync } from 'node:child_process';
 
+import { redact, redactError } from './redact.js';
+
 export interface ClaudeCliProbe {
   /** 检查 `claude --version` 是否可执行（PATH 里有且能跑通） */
   isAvailable(): boolean;
@@ -96,16 +98,7 @@ export function defaultClaudeCliProbe(): ClaudeCliProbe {
   };
 }
 
-/** 从字符串里清掉所有 env 值（防 PAT 出现在 stderr） */
-function redact(text: string, env: Record<string, string>): string {
-  let out = text;
-  for (const v of Object.values(env)) {
-    if (v && v.length >= 4) {
-      out = out.split(v).join('***');
-    }
-  }
-  return out;
-}
+/** 从字符串里清掉所有 env 值（防 PAT 出现在 stderr） — 现已抽到 ./redact.ts。 */
 
 /**
  * 高阶函数：尝试用 CLI 注册；CLI 不可用或失败时返回 fallback 让调用方走手写路径。
@@ -131,8 +124,7 @@ export async function preferClaudeCliInstall(
   try {
     result = probe.addJson('tapd', json, 'user');
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { used: 'fallback', stderr: redact(msg, tapdEnv) };
+    return { used: 'fallback', stderr: redactError(err, tapdEnv) };
   }
   if (result.ok) {
     return { used: 'cli' };

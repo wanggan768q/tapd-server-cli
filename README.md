@@ -72,6 +72,8 @@
 
 适用于 Codex / OpenCode / Cursor，以及在终端里批量装 / CI 场景。
 
+> ⚠️ **注意 — Claude Code 的 MCP 配置文件位置**：MCP server 写在 `~/.claude.json`（家目录顶层 `mcpServers.tapd`），**不是** `~/.claude/settings.json`（permissions / hooks / UI 行为的设置）。`settings.json` 里找不到 `tapd` 不是 bug——是找错文件了。如果你不想再纠结这两个文件，**改用上面的 plugin 路径**，PAT 直接进 keychain，不用碰任何配置文件。
+
 > 如果你用 **Claude Code**，请优先看上面的「在 Claude Code 中安装（推荐）」节——plugin 路径更简单、PAT 直接进 keychain。
 
 > Claude Code / Codex 这两家客户端，本工具会**优先调官方 CLI**（`claude mcp add-json --scope user` / `codex mcp add`）写入配置；CLI 不可用时回退到手写配置文件，行为与旧版兼容。

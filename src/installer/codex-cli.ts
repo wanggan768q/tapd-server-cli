@@ -17,6 +17,8 @@
 
 import { spawnSync } from 'node:child_process';
 
+import { redact, redactError } from './redact.js';
+
 export interface CodexCliProbe {
   /** 检查 `codex --version` 是否可执行 */
   isAvailable(): boolean;
@@ -98,16 +100,7 @@ export function defaultCodexCliProbe(): CodexCliProbe {
   };
 }
 
-/** 从字符串里清掉所有长度 >= 4 的 env 值（防 PAT 出现在 stderr） */
-function redact(text: string, env: Record<string, string>): string {
-  let out = text;
-  for (const v of Object.values(env)) {
-    if (v && v.length >= 4) {
-      out = out.split(v).join('***');
-    }
-  }
-  return out;
-}
+/** 从字符串里清掉所有 env 值（防 PAT 出现在 stderr） — 现已抽到 ./redact.ts。 */
 
 /**
  * 高阶函数：尝试用 codex CLI 注册；CLI 不可用或失败时返回 fallback 让调用方走手写 TOML 路径。
@@ -131,10 +124,9 @@ export async function preferCodexCliInstall(
       stderr: redact(result.stderr, tapdEnv),
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
     return {
       used: 'fallback',
-      stderr: redact(msg, tapdEnv),
+      stderr: redactError(err, tapdEnv),
     };
   }
 }
