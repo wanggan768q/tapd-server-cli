@@ -13,6 +13,9 @@ coverage/
 .codex/
 .opencode/
 
+# OMC runtime state (session / plan / memory caches)
+.omc/
+
 # Installer backups created during local dry-run / testing
 *.bak.*
 
