@@ -16,6 +16,8 @@
 - [ ] 2.1 新增 `scripts/sync-plugin-version.mjs`：读 package.json.version，回写 plugin.json.version 与 marketplace.json.plugins[0].version —— 0.5h
 - [ ] 2.2 在 `package.json.scripts` 加 `"version": "node scripts/sync-plugin-version.mjs && git add .claude-plugin/plugin.json .claude-plugin/marketplace.json"` —— 0.2h
 - [ ] 2.3 修改 `.github/workflows/release.yml`：发版前校验三处 version 一致；`npm pack --dry-run` 不含 plugin 文件 —— 0.5h
+- [ ] 9b 把 Verify npm package excludes plugin files 移到 npm run build 之后、npm publish 之前；失败时 echo 出 grep 命中行（design correction，发现于 PR-1 实施后）
+- [ ] 10b 预格式化 .claude-plugin/plugin.json 的 keywords 数组（让 sync 脚本字节稳定，避免 npm version 触发无谓格式 diff）
 - [ ] 2.4 验证：故意改不一致版本号，跑 release dry-run，确认 fail —— 0.3h
 
 ## 3. B1 — claude-cli 模块（TDD 红→绿）

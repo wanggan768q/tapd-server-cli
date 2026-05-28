@@ -415,11 +415,11 @@ git commit -m "chore(release): wire npm version hook to sync plugin manifests"
 ### Task 9: 修改 `.github/workflows/release.yml` — 加版本同步与 npm pack 校验
 
 **Files:**
-- Modify: `.github/workflows/release.yml`（在现有 "Verify tag matches package.json version" 步骤之后插入两个新步骤）
+- Modify: `.github/workflows/release.yml`（在现有 release workflow 中补 version sync 校验，并把 npm pack 校验放到 build 之后、publish 之前）
 
-- [ ] **Step 1: 编辑 release.yml**
+- [ ] **Step 1: 编辑 release.yml（版本同步校验的位置）**
 
-把现有第 22-30 行的 "Verify tag matches package.json version" 步骤之后（在 "Extract release notes" 之前）插入两个新步骤：
+把现有第 22-30 行的 "Verify tag matches package.json version" 步骤之后（在 "Extract release notes" 之前）插入下面步骤：
 
 ```yaml
       - name: Verify plugin version sync
@@ -433,17 +433,28 @@ git commit -m "chore(release): wire npm version hook to sync plugin manifests"
             exit 1
           fi
           echo "✓ versions in sync at $PKG"
+```
 
+- [ ] **Step 1b: 编辑 release.yml（npm pack 校验的正确位置）**
+
+把下面步骤插入到 `- run: npm run build` 与 `- name: npm publish (with provenance)` 之间：
+
+```yaml
       - name: Verify npm package excludes plugin files
         run: |
           set -euo pipefail
           npm pack --dry-run 2>&1 | tee /tmp/pack.txt
           if grep -E "\.claude-plugin/|\.mcp\.json|^commands/|^skills/|^openspec/|^docs/" /tmp/pack.txt; then
-            echo "::error::plugin 文件被打包进 npm 发布包"
+            echo "::error::plugin 文件被打包进 npm 发布包，命中以下条目："
+            grep -E "\.claude-plugin/|\.mcp\.json|^commands/|^skills/|^openspec/|^docs/" /tmp/pack.txt | sed 's/^/::error::  /'
             exit 1
           fi
           echo "✓ npm package clean"
 ```
+
+> **位置说明**：`Verify npm package excludes plugin files` 必须在 `npm run build` 之后跑——否则 `dist/` 不存在，`files: ["dist", ...]` 白名单匹配 0 文件、tarball 自然不含 plugin 文件，校验沦为无意义恒过。把它放在 build 之后、publish 之前作为最后一道门禁。
+>
+> **错误信息增强**：失败时 echo 出 grep 命中的具体行（`sed 's/^/::error::  /'`），让 maintainer 直接在 GitHub Actions UI 看到哪些文件混入，无需重跑 `npm pack`。
 
 - [ ] **Step 2: 验证 YAML 合法**
 
@@ -516,6 +527,53 @@ Expected: `0.2.0`（被 sync 脚本修复回来）
 
 Run: `git status --short`
 Expected: 无 modified 文件。
+
+---
+
+### Task 10b: 预格式化 plugin.json 让 sync 脚本字节稳定
+
+**Files:**
+- Modify: `.claude-plugin/plugin.json`（仅 `keywords` 字段格式调整）
+
+**Context**: `scripts/sync-plugin-version.mjs` 用 `JSON.stringify(obj, null, 2)` 重写文件——它会把任何数组展开成多行。如果 `.claude-plugin/plugin.json` 的 `keywords` 是手写的 inline 数组，第一次跑 `npm version` 会产生 6 行无谓格式 diff（除了 version 字段）。这一 task 把 keywords 预先改成多行形态，让 sync 脚本输出与文件 byte-identical（version 已对齐时）。
+
+- [ ] **Step 1: 改 keywords 字段格式**
+
+把 `.claude-plugin/plugin.json` 里：
+
+```json
+"keywords": ["tapd", "mcp", "tencent", "agile", "issue-tracker"],
+```
+
+改为：
+
+```json
+"keywords": [
+  "tapd",
+  "mcp",
+  "tencent",
+  "agile",
+  "issue-tracker"
+],
+```
+
+- [ ] **Step 2: 验证 sync 脚本字节稳定**
+
+```bash
+cd "<repo>"
+cp .claude-plugin/plugin.json /tmp/before-sync.json
+node scripts/sync-plugin-version.mjs
+diff /tmp/before-sync.json .claude-plugin/plugin.json && echo "✓ byte-stable"
+rm -f /tmp/before-sync.json
+```
+Expected: `✓ byte-stable`
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add .claude-plugin/plugin.json
+git commit -m "chore(plugin): pre-format keywords to match sync script output"
+```
 
 ---
 
@@ -1884,7 +1942,7 @@ Expected: 返回 PAT 身份。
 
 | Requirement | 实施任务 |
 |---|---|
-| 仓库提供 Claude Code plugin manifest | Task 1, 23（静态校验） |
+| 仓库提供 Claude Code plugin manifest | Task 1, 10b, 23（静态校验） |
 | 仓库提供 marketplace manifest 让自身被发现 | Task 2, 23, 38（异机验证） |
 | bundled MCP server 通过 npx 拉起，PAT 走 user_config 占位符注入 | Task 3, 23, 31-32（smoke） |
 | plugin 提供 slash 命令包装 | Task 4, 33（smoke） |
@@ -1908,6 +1966,11 @@ Expected: 返回 PAT 身份。
 - `CodexCliProbe.addStdio(name, command, args, env)` 在 Task 16/17 一致 ✓
 - `preferClaudeCliInstall` 与 `preferCodexCliInstall` 返回 `{ used: 'cli' | 'fallback', stderr? }` 在所有调用点一致 ✓
 - Plugin name `tapd-server-cli`、MCP server key `tapd` 全计划保持解耦一致 ✓
+
+### Plan vs. Implementation Reconciliation
+
+- Deviation 1（Task 9 / PR-1 review）：`Verify npm package excludes plugin files` 没按原计划字面位置放在 `Verify plugin version sync` 后，而是修正为放到 `npm run build` 之后、`npm publish` 之前；同时失败时会把 grep 命中的具体行用 `sed 's/^/::error::  /'` 回显到 GitHub Actions UI。此计划已按实际实现更新。
+- Deviation 2（Task 10 verification + follow-up commit `d0bccf1`）：新增 Task 10b，记录 `.claude-plugin/plugin.json` 的 `keywords` 预格式化为多行数组，以匹配 `scripts/sync-plugin-version.mjs` 的 `JSON.stringify(obj, null, 2)` 输出，避免 `npm version` 产生无谓格式 diff。
 
 ---
 
