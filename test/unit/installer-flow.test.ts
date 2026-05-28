@@ -276,3 +276,66 @@ describe('runInstall — multi-client orchestration', () => {
     expect(result.results.every((r) => r.outcome === 'noop')).toBe(true);
   });
 });
+
+describe('runInstall — claude-code prefers claude CLI', () => {
+  it('skips adapter.write when claude CLI succeeds', async () => {
+    vi.resetModules();
+    vi.doMock('../../src/installer/claude-cli.js', () => ({
+      preferClaudeCliInstall: async () => ({ used: 'cli' }),
+    }));
+    const { claudeCodeAdapter: freshAdapter } = await import(
+      '../../src/installer/adapters/claude-code.js'
+    );
+    const writeSpy = vi.spyOn(freshAdapter, 'write').mockResolvedValue();
+    const { runInstall: freshRunInstall } = await import('../../src/installer/flow.js');
+
+    const { stdout, stderr, out } = fakeStdio();
+    const result = await freshRunInstall({
+      clients: ['claude-code'],
+      dryRun: false,
+      stdout,
+      stderr,
+      tokenOverride: 'pat-xxx',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.results[0]?.outcome).toBe('wrote');
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(out.join('')).toContain('via claude mcp add-json');
+
+    vi.doUnmock('../../src/installer/claude-cli.js');
+    writeSpy.mockRestore();
+  });
+
+  it('falls back to adapter.write when claude CLI is unavailable', async () => {
+    vi.resetModules();
+    const dir = mkdtempSync(join(tmpdir(), 'tapd-fallback-'));
+    const fakePath = join(dir, 'claude.json');
+
+    vi.doMock('../../src/installer/claude-cli.js', () => ({
+      preferClaudeCliInstall: async () => ({ used: 'fallback' }),
+    }));
+    const { claudeCodeAdapter: freshAdapter } = await import(
+      '../../src/installer/adapters/claude-code.js'
+    );
+    vi.spyOn(freshAdapter, 'configPath').mockReturnValue(fakePath);
+    const { runInstall: freshRunInstall } = await import('../../src/installer/flow.js');
+
+    const { stdout, stderr } = fakeStdio();
+    const result = await freshRunInstall({
+      clients: ['claude-code'],
+      dryRun: false,
+      stdout,
+      stderr,
+      tokenOverride: 'pat-xxx',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.results[0]?.outcome).toBe('wrote');
+    expect(result.results[0]?.path).toBe(fakePath);
+    await expect(fs.access(fakePath)).resolves.toBeUndefined();
+
+    vi.doUnmock('../../src/installer/claude-cli.js');
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+});

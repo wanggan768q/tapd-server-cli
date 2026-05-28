@@ -1,0 +1,15 @@
+# Plugin packaging — never publish to npm registry
+.claude-plugin/
+.codex-plugin/
+.mcp.json
+commands/
+skills/
+
+# OpenSpec / docs not for end users of npm package
+openspec/
+docs/
+
+# Build / test artifacts
+test/
+*.log
+.git/

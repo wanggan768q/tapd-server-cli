@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "tapd": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "tapd-server-cli"],
+      "env": {
+        "TAPD_TOKEN": "${user_config.tapd_token}",
+        "TAPD_LOG_LEVEL": "info"
+      }
+    }
+  }
+}

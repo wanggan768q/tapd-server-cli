@@ -13,6 +13,8 @@ import { cursorAdapter } from './adapters/cursor.js';
 import { opencodeAdapter } from './adapters/opencode.js';
 import { promptToken, TokenInputError, type PromptOptions } from './prompt.js';
 import { type ClientAdapter } from './adapter.js';
+import { preferClaudeCliInstall } from './claude-cli.js';
+import { preferCodexCliInstall } from './codex-cli.js';
 
 const ALL_ADAPTERS: Record<string, ClientAdapter> = {
   [claudeCodeAdapter.key]: claudeCodeAdapter,
@@ -32,6 +34,8 @@ export interface PerClientResult {
   backup?: string;
   /** 失败原因（仅 outcome === 'failed' 时） */
   error?: string;
+  /** B1：CLI 优先尝试失败、降级到手写文件路径时的诊断（不阻塞流程，仅供用户感知） */
+  fallbackReason?: string;
 }
 
 export interface RunInstallOptions {
@@ -58,13 +62,17 @@ export interface RunInstallResult {
  *   = <client>  (no-op) <path>     已是最新
  *   [dry-run] <client>  <path>     dry-run
  *   ✗ <client>  <reason>           失败
+ *
+ * B1：当 wrote 是因为 CLI 优先失败降级到手写文件路径时，附加 (via fallback: <reason>)，
+ * 让用户能从汇总输出里直接看到 CLI 那次的失败真因，而不是被静默吞到 stdout 里。
  */
 function formatSummaryLine(r: PerClientResult): string {
+  const fallbackSuffix = r.fallbackReason ? `  (via fallback: ${r.fallbackReason})` : '';
   switch (r.outcome) {
     case 'wrote':
-      return `✔ ${r.client}  ${r.path}`;
+      return `✔ ${r.client}  ${r.path}${fallbackSuffix}`;
     case 'noop':
-      return `= ${r.client}  (no-op) ${r.path}`;
+      return `= ${r.client}  (no-op) ${r.path}${fallbackSuffix}`;
     case 'dry-run':
       return `[dry-run] ${r.client}  ${r.path}`;
     case 'failed':
@@ -140,6 +148,37 @@ export async function runInstall(opts: RunInstallOptions): Promise<RunInstallRes
       continue;
     }
 
+    // B1：claude-code / codex 优先调官方 CLI；不可用或失败再走手写文件 fallback。
+    let fallbackReason: string | undefined;
+    if (!opts.dryRun && (key === 'claude-code' || key === 'codex')) {
+      const cliResult =
+        key === 'claude-code'
+          ? await preferClaudeCliInstall(tapdEnv)
+          : await preferCodexCliInstall(tapdEnv);
+      if (cliResult.used === 'cli') {
+        const via =
+          key === 'claude-code'
+            ? '<via claude mcp add-json --scope user>'
+            : '<via codex mcp add>';
+        stdout.write(`已通过官方 CLI 注册 ${adapter.displayName}：${via}\n`);
+        results.push({
+          client: key,
+          outcome: 'wrote',
+          path: via,
+        });
+        continue;
+      }
+      // 走 fallback：把 CLI 失败的诊断信息记到 fallbackReason，并写到 stderr（而非 stdout，
+      // 避免被淹没在正常输出里、让用户误以为安装一切正常）。
+      if (cliResult.stderr) {
+        fallbackReason = cliResult.stderr.trim().split('\n')[0]?.slice(0, 200);
+        stderr.write(
+          `(${adapter.displayName} CLI 不可用或失败，降级走手写文件：${fallbackReason})\n`,
+        );
+      }
+      // 继续往下到现行手写文件路径
+    }
+
     try {
       const existing = await adapter.read();
       const isUpToDate = adapter.isUpToDate(existing, tapdEnv);
@@ -157,7 +196,7 @@ export async function runInstall(opts: RunInstallOptions): Promise<RunInstallRes
 
       if (isUpToDate) {
         stdout.write(`${adapter.displayName} 配置已是最新，无需变更。\n`);
-        results.push({ client: key, outcome: 'noop', path: target });
+        results.push({ client: key, outcome: 'noop', path: target, fallbackReason });
         continue;
       }
 
@@ -174,6 +213,7 @@ export async function runInstall(opts: RunInstallOptions): Promise<RunInstallRes
         outcome: 'wrote',
         path: target,
         backup: backupHint,
+        fallbackReason,
       });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
