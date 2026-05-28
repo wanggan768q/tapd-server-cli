@@ -14,6 +14,88 @@
 
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
+## [0.2.1] - 2026-05-28
+
+本版本累积 PR #1 / #11 / #12 / #13 四次合入,把仓库升级为 Claude Code plugin、加入官方 CLI 优先安装路径、新增 `tapd.update` 升级工具、并交付 plugin 端到端 smoke 工具链。零 breaking change;0.2.0 用户无需重装。
+
+### Added
+
+#### Claude Code plugin 一等公民支持 (PR #1)
+
+- **`.claude-plugin/plugin.json`**:plugin manifest。`name=tapd-server-cli`、`userConfig.tapd_token` (`sensitive: true`,让 Claude Code 把 PAT 走系统 keychain 不落配置文件)、`mcpServers: "./.mcp.json"` 引用 bundled server 配置。
+- **`.claude-plugin/marketplace.json`**:单 plugin 入口,`source: "./"`,让用户能 `claude /plugin marketplace add wanggan768q/tapd-server-cli` 把本仓库注册为 marketplace 源。
+- **`.mcp.json`**:bundled MCP server 配置,`mcpServers.tapd` 走 `npx -y tapd-server-cli@~0.2.0`(PR #12 锁定到 minor 范围),env.TAPD_TOKEN 用 `${user_config.tapd_token}` 占位符注入。
+- **`commands/login.md` + `commands/logout.md`**:thin-wrapper slash 命令 `/tapd-server-cli:login` / `/tapd-server-cli:logout`,提示 Claude 调底层 `tapd.login` / `tapd.logout` MCP 工具。
+- **`scripts/sync-plugin-version.mjs`**:`npm version` 钩子调用,自动同步 4 处 version(plugin.json / marketplace.json / .mcp.json / src/runtime/version.ts)避免漂移。
+- **`.github/workflows/release.yml` CI 校验**:发版前 verify plugin version sync + verify npm pack excludes plugin files(`.claude-plugin/` `.mcp.json` `commands/` `skills/` `openspec/` `docs/` 任一命中即 fail,失败时 echo 出 grep 命中行便于定位)。
+- **`.npmignore`**:与 `package.json.files` 白名单形成双保险,plugin 文件不进 npm publish。
+
+#### `npx install` 优先调官方 CLI (PR #1)
+
+- **`src/installer/claude-cli.ts`**:`ClaudeCliProbe` 接口 + `defaultClaudeCliProbe()` (spawnSync) + `preferClaudeCliInstall()` 高阶函数。检测 `claude --version` 可用 → 调 `claude mcp add-json tapd '<json>' --scope user`;不可用或失败 → 返回 `{ used: 'fallback' }` 让调用方走现行手写 `~/.claude.json` 路径。5 秒超时,`shell: false` 防 PAT 进 shell history。
+- **`src/installer/codex-cli.ts`**:对称的 `CodexCliProbe` + `preferCodexCliInstall()`,调用 `codex mcp add tapd --env K=V ... -- npx -y tapd-server-cli`。
+- **`src/installer/flow.ts` 集成**:为 `claude-code` / `codex` 客户端前置 CLI 优先逻辑,CLI 成功 → 跳过 `adapter.write`,失败/不可用 → 回退现行手写文件路径(向后兼容老用户)。
+
+#### `tapd.update` MCP 工具 + `/tapd-server-cli:update` slash 命令 (PR #12)
+
+- **`src/tools/update.ts`**:无入参,返回结构化 `UpdateInfo`:`current` / `latest` / `comparison` / `installed_via` / `upgrade_commands` / `fetch_error` / `note`。
+  - **current**:编译时内联 `src/runtime/version.ts` 的 `VERSION` 常量,避免运行时读 `package.json` 在 plugin 沙箱里 cwd 不稳。
+  - **latest**:`spawnSync('npm', ['view', 'tapd-server-cli', 'version'])`,5s 超时,Windows 走 `.cmd` 探测(复用 PR #1 `resolveBinaryName` 范式 + `TAPD_TEST_PLATFORM` 钩子)。
+  - **installed_via**:双信号检测 — `CLAUDE_PLUGIN_ROOT` env 优先于 `argv[1]` 路径包含 `.claude/plugins/` 子串。
+  - **upgrade_commands**:按 `installed_via × comparison` 矩阵分流 — plugin 路径给 `/plugin marketplace update`,npx 路径给 `npx -y tapd-server-cli@latest install <client>`。
+  - **对外永不抛**:网络受限 / corporate registry / npm CLI 缺失任意场景下 `latest=null`,fetch_error 走 `redactError()` 脱敏,工具仍返成功结构。
+- **`commands/update.md`**:slash 命令 `/tapd-server-cli:update`,正文指示 Claude 调 `tapd.update` 并按 `upgrade_commands` 给用户渲染升级指引。
+- **`src/runtime/version.ts`**:编译时内联版本号常量,作为 `tapd.update.current` 字段的可信源。
+
+#### Plugin E2E smoke 工具链 (PR #13)
+
+- **`scripts/smoke/run-plugin-e2e.sh`**:5 项可自动化的 plugin 端到端检查 — version 三处一致 / `claude plugin validate` / `npm pack --dry-run` 排除 / `.mcp.json` 锁定形态 / npm registry `~minor.0` 范围解析。`SMOKE_OUT=path` 同时落盘日志,`SKIP_NPX=1` 跳过最慢的 step 5。任一 FAIL 退出码 1。
+- **`docs/smoke/2026-05-28-plugin-e2e.md`**:8 条 GUI checklist,人在 Claude Code 里跑完每条贴证据,闭环 issue #10。
+- **`docs/smoke/2026-05-28-plugin-e2e.sample-output.txt`**:作者首次跑通的输出样本,供后人对照格式。
+
+#### 测试
+
+新增 6 个测试文件、+12 个 vitest 用例,累积 277 → 接近 280+ 全绿:
+
+- `test/unit/claude-cli.test.ts`:4 用例(不可用 / 成功 / 失败 / spawn 抛错不泄漏 PAT)。
+- `test/unit/codex-cli.test.ts`:4 个对称用例。
+- `test/unit/installer-flow.test.ts` 增量:`prefers claude CLI` describe 2 集成用例(`vi.doMock` + 动态 import,断言 `adapter.write` 不被调 vs 真写入)。
+- `test/unit/plugin-manifest.test.ts`:3 用例 — schema basics / 三处 version 同步 / `.mcp.json` env 占位符不写死真 PAT。
+- `test/unit/redact.test.ts`:覆盖 `redact()` / `redactError()` 白名单 + err.stack + URL-encoded 三层(PR #11)。
+- `test/unit/update-logic.test.ts` + `update-tool.test.ts`:版本比较 / installed_via 检测 / npm CLI probe 等 update 工具核心逻辑。
+
+### Changed
+
+- **`.mcp.json` 锁定到 `~0.2.0`** (PR #12):`args[1]` 由 `tapd-server-cli` 改为 `tapd-server-cli@~0.2.0`。patch 自动跟(安全修复无感分发)、minor/major 必须显式 `/plugin marketplace update` 触发(by-design,防止 plugin 用户在不知情下吃到 breaking change)。
+- **`redact` 抽到独立 util** (PR #11):`src/installer/redact.ts` 集中 `redact()` + `redactError()`,删除 `claude-cli.ts` / `codex-cli.ts` 内的本地实现。三处加固:
+  - **白名单脱敏**:只对 `SENSITIVE_KEYS = { TAPD_TOKEN }` 命中的 env 值替换。老实现 `if (v.length >= 4)` 全替会把 `TAPD_LOG_LEVEL='info'` 替成 `***`,干扰 stderr 诊断输出。
+  - **覆盖 `err.stack`**:`redactError()` 同时清 `err.message` + `err.stack`,防 Node 把 argv 塞进 stack 时 PAT 从 stack 泄漏。
+  - **URL-encoded 兜底**:token 同时按 `encodeURIComponent(token)` 形态再替一次,覆盖 CLI 把 token URL-encode 后输出错误的场景。
+- **README 重排**(PR #1 + PR #11):
+  - 顶部新增「在 Claude Code 中安装(推荐)」节,plugin 路径置顶,1-2-3 步骤。
+  - 现行「快速开始」降级为「在其它客户端中安装(npx install)」。
+  - 显式澄清 `~/.claude.json`(MCP 配置) ≠ `~/.claude/settings.json`(settings)——红字 + 故障排查表新增 2 行(`/mcp` 看不到 `tapd` / `npx 装过又装 plugin` 被 user scope 屏蔽)。
+  - 卸载节区分 plugin 用户(`/plugin uninstall tapd-server-cli`)与 npx install 用户(`npx ... uninstall --purge`)。
+  - Slash 命令节加 `/tapd-server-cli:login` `/tapd-server-cli:logout` `/tapd-server-cli:update`。
+
+### Fixed
+
+- **`flow.ts` CLI 优先分支** Important issue(PR #1 review 期间发现并 amend 修复):`Verify npm package excludes plugin files` CI step 从原位置(在 `npm run build` 之前)移到 `npm run build` 之后、`npm publish` 之前。原位置 `dist/` 还没生成,`files: ["dist", ...]` 白名单匹配 0 文件,校验沦为无意义恒过。同时失败信息增强为输出 grep 命中的具体行,便于 maintainer 定位。
+- **`.claude-plugin/plugin.json` 预格式化** (PR #1 follow-up commit `d0bccf1`):`keywords` 数组从手写 inline 形态预先改成 `JSON.stringify(obj, null, 2)` 输出的多行形态,让 `sync-plugin-version.mjs` 跑后文件字节稳定,首次 `npm version patch` 不产生无谓的 6 行格式 diff。
+
+### Spec (OpenSpec)
+
+- 新增 capability `claude-code-plugin`:6 个 Requirement(plugin manifest / marketplace manifest / bundled MCP server / slash 命令 / npm publish 隔离 / 与 npx install 并存)。
+- 修改 capability `installer-cli`:新增 2 个 Requirement(CLI 优先 + 文案区分两文件)。
+- 新增 capability `update-command`(PR #12):覆盖 `tapd.update` 工具的 current/latest/installed_via/upgrade_commands 字段语义、永不抛契约、redact 脱敏边界,共 115 行 spec。
+- 变更未归档(保持在 `openspec/changes/` 待后续 `openspec-archive-change` 处理)。
+
+### Notes
+
+- **PR 合并顺序**:#1 → #11 → #12 → #13(线性,无 rebase 冲突)。
+- **本地工具债**(已任务化跟踪,不阻塞发版):claude-cli vs codex-cli JSDoc 风格对称 backport;`flow.ts` 抽 `CLI_PREFER_BY_CLIENT` map 替硬编码;README 6 条文档微调。
+- **issue #10 (端到端 smoke 闭环)**:本版本交付工具链(PR #13)+ 自动化部分 5/5 PASS,GUI 8 项 checklist 待人工补证据。
+
 ## [0.2.0] - 2026-05-27
 
 ### Added
