@@ -19,7 +19,7 @@ CLI 调用 MUST 满足：
 - **THEN** 流程调用 `claude mcp add-json tapd '<json>' --scope user`
 - **AND** `<json>` 中 `env.TAPD_TOKEN` 等于用户提供的 PAT
 - **AND** 调用成功（exit code 0）后跳过 `adapter.write`，记录 outcome=`wrote`
-- **AND** 输出汇总行包含 `通过 claude CLI 注册到 user scope`
+- **AND** 输出汇总行包含 `已通过官方 CLI 注册 Claude Code：<via claude mcp add-json --scope user>` 形式的提示
 
 #### Scenario: claude CLI 不可用时回退手写文件
 
@@ -27,7 +27,7 @@ CLI 调用 MUST 满足：
 - **AND** `claude --version` 在 PATH 中不可执行（spawnError 或 exit code 非 0）
 - **THEN** 流程回退到现行 `adapter.read` → `merge` → `write` 路径
 - **AND** 写入 `~/.claude.json` 顶层 `mcpServers.tapd`
-- **AND** 输出提示 `(claude CLI 不可用，回退手写)`，但不视为失败
+- **AND** stderr 非空时输出 `(Claude Code CLI 不可用或失败：…)` 提示；stderr 为空时静默回退；两种情况均不视为失败
 
 #### Scenario: codex CLI 可用时优先调用 codex mcp add
 
