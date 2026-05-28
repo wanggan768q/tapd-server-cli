@@ -787,7 +787,13 @@ export async function preferClaudeCliInstall(
     args: ['-y', 'tapd-server-cli'],
     env: tapdEnv,
   });
-  const result = probe.addJson('tapd', json, 'user');
+  let result: { ok: boolean; stderr: string };
+  try {
+    result = probe.addJson('tapd', json, 'user');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { used: 'fallback', stderr: redact(msg, tapdEnv) };
+  }
   if (result.ok) {
     return { used: 'cli' };
   }
@@ -1971,6 +1977,7 @@ Expected: 返回 PAT 身份。
 
 - Deviation 1（Task 9 / PR-1 review）：`Verify npm package excludes plugin files` 没按原计划字面位置放在 `Verify plugin version sync` 后，而是修正为放到 `npm run build` 之后、`npm publish` 之前；同时失败时会把 grep 命中的具体行用 `sed 's/^/::error::  /'` 回显到 GitHub Actions UI。此计划已按实际实现更新。
 - Deviation 2（Task 10 verification + follow-up commit `d0bccf1`）：新增 Task 10b，记录 `.claude-plugin/plugin.json` 的 `keywords` 预格式化为多行数组，以匹配 `scripts/sync-plugin-version.mjs` 的 `JSON.stringify(obj, null, 2)` 输出，避免 `npm version` 产生无谓格式 diff。
+- **Deviation 3**: Plan's Task 12 literal implementation code block originally had `preferClaudeCliInstall` calling `probe.addJson()` directly without top-level try/catch. Plan's Task 11 test case 4 (probe throws → fallback + redacted stderr) required catching that throw. The two literal code blocks contradicted each other. Implementer correctly added top-level try/catch in `preferClaudeCliInstall` (and applied the same pattern proactively to codex-cli.ts). Plan Task 12 code block has now been updated to reflect the actual implementation.
 
 ---
 
