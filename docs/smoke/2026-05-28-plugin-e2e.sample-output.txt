@@ -1,0 +1,23 @@
+=== Plugin E2E Smoke (commit a2b7b87) ===
+=== 时间：2026-05-28T09:09:17Z ===
+
+[1/5] plugin / marketplace / .mcp.json 合规
+  ✓ 版本三处一致：0.2.0
+
+[2/5] claude plugin validate
+  ✓ claude plugin validate 通过
+
+[3/5] npm pack --dry-run 排除 plugin 文件
+  ✓ npm 包仅含 dist/ + README + LICENSE + package.json
+
+[4/5] .mcp.json 锁定到 ~<minor>.0
+  ✓ .mcp.json args[1] = tapd-server-cli@~0.2.0
+
+[5/5] 验证 ~<minor>.0 范围在 npm registry 上能解析到合法版本
+  ✓ 范围 ~0.2.0 解析到 0.2.0（minor 与本仓库一致）
+
+=== 汇总：PASS=5  FAIL=0  SKIP=0 ===
+
+✅ 自动化部分全过。GUI / 交互验证（/plugin install 弹窗、/mcp Connected、
+   /tapd-server-cli:login 浏览器弹窗、/tapd-server-cli:update 渲染等）
+   请按 docs/smoke/<date>-plugin-e2e.md 的 checklist 手工补证据。
