@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  defaultCodexCliProbe,
   preferCodexCliInstall,
   type CodexCliProbe,
 } from '../../src/installer/codex-cli.js';
@@ -68,5 +69,57 @@ describe('preferCodexCliInstall', () => {
     const r = await preferCodexCliInstall({ TAPD_TOKEN: 'super-secret-pat' }, probe);
     expect(r.used).toBe('fallback');
     expect(r.stderr ?? '').not.toContain('super-secret-pat');
+  });
+});
+
+/**
+ * Smoke tests for defaultCodexCliProbe — exercises the REAL spawnSync path.
+ * PR #1 follow-up #6: real spawn path was previously untested.
+ */
+describe('defaultCodexCliProbe (smoke)', () => {
+  it('isAvailable() returns false and does not throw when codex is not on PATH', () => {
+    const oldPath = process.env.PATH;
+    const oldPathExt = process.env.PATHEXT;
+    process.env.PATH = process.platform === 'win32' ? 'C:\\__nonexistent__' : '/__nonexistent__';
+    if (process.platform === 'win32') process.env.PATHEXT = '';
+    try {
+      const probe = defaultCodexCliProbe();
+      expect(() => probe.isAvailable()).not.toThrow();
+      expect(probe.isAvailable()).toBe(false);
+    } finally {
+      process.env.PATH = oldPath;
+      if (oldPathExt !== undefined) process.env.PATHEXT = oldPathExt;
+    }
+  });
+
+  it('addStdio on missing binary returns ok:false without throwing', () => {
+    const oldPath = process.env.PATH;
+    process.env.PATH = process.platform === 'win32' ? 'C:\\__nonexistent__' : '/__nonexistent__';
+    try {
+      const probe = defaultCodexCliProbe();
+      const r = probe.addStdio('tapd', 'npx', ['-y', 'tapd-server-cli'], { TAPD_TOKEN: 'x' });
+      expect(r.ok).toBe(false);
+      expect(typeof r.stderr).toBe('string');
+    } finally {
+      process.env.PATH = oldPath;
+    }
+  });
+
+  it('on win32, resolveBinaryName probes .cmd/.ps1/.exe candidates without throwing', () => {
+    const oldPath = process.env.PATH;
+    const oldPlatform = process.env.TAPD_TEST_PLATFORM;
+    process.env.PATH = '/__nonexistent__';
+    process.env.TAPD_TEST_PLATFORM = 'win32';
+    try {
+      const probe = defaultCodexCliProbe();
+      expect(probe.isAvailable()).toBe(false);
+    } finally {
+      process.env.PATH = oldPath;
+      if (oldPlatform === undefined) {
+        delete process.env.TAPD_TEST_PLATFORM;
+      } else {
+        process.env.TAPD_TEST_PLATFORM = oldPlatform;
+      }
+    }
   });
 });
