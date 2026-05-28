@@ -11,7 +11,13 @@
   "homepage": "https://github.com/wanggan768q/tapd-server-cli",
   "repository": "https://github.com/wanggan768q/tapd-server-cli",
   "license": "MIT",
-  "keywords": ["tapd", "mcp", "tencent", "agile", "issue-tracker"],
+  "keywords": [
+    "tapd",
+    "mcp",
+    "tencent",
+    "agile",
+    "issue-tracker"
+  ],
   "userConfig": {
     "tapd_token": {
       "type": "string",
