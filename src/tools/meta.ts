@@ -105,6 +105,7 @@ export function registerMetaTools(server: McpServer, deps: MetaToolDeps): void {
           'tapd.refresh_permissions',
           'tapd.login',
           'tapd.logout',
+          'tapd.update',
         ],
         resource_tools: tools,
         attachment_tools: deps.attachmentRegistry.currentTools(),
