@@ -13,9 +13,9 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { join } from 'node:path';
 
-import { resolvePackageRoot } from '../installer/package-root.js';
+import { readPackageVersion } from '../runtime/package-version.js';
 
 export interface UpdateCommandOptions {
   json?: boolean;
@@ -61,15 +61,9 @@ export function compareSemver(a: string, b: string): -1 | 0 | 1 {
 }
 
 function defaultReadCurrentVersion(): string {
-  const require = createRequire(import.meta.url);
-  // 包根的 package.json：dist/commands/update-handler.js → ../../package.json
-  // dev 环境（src/commands/update-handler.ts via tsx）：同样到 package 根
-  const pkgPath = `${resolvePackageRoot()}/package.json`;
-  const pkg = require(pkgPath) as { version?: string };
-  if (typeof pkg.version !== 'string' || pkg.version.length === 0) {
-    throw new Error(`无法从 ${pkgPath} 读取 version`);
-  }
-  return pkg.version;
+  // 复用 runtime/package-version.ts 的单一来源，避免再发明一份 createRequire 读 package.json
+  // 的逻辑（同时与 server.ts 的 serverInfo.version 保证字节一致）。
+  return readPackageVersion();
 }
 
 function resolveNpmBinaryName(): string {
@@ -81,14 +75,16 @@ function resolveNpmBinaryName(): string {
 
 function defaultFetchLatestVersion(): string {
   const bin = resolveNpmBinaryName();
-  // Windows 上 npm.cmd 在 spawnSync(shell:false) 下偶发 status=null（PATHEXT/cmd
-  // wrapper 边界），这里在 win32 走 shell:true；其他平台保持 shell:false。
-  const useShell = (process.env.TAPD_TEST_PLATFORM ?? process.platform) === 'win32';
+  // 与 src/installer/claude-cli.ts 保持同款 spawn 模板：shell:false 不经
+  // shell expansion，零注入面（args 当前都是字面常量；如果将来这里参数
+  // 变成 user-supplied，shell:true 路径会立刻成 shell 注入风险）。
+  // win32 下 npm 真实可执行是 npm.cmd，由 resolveNpmBinaryName() 在 PATHEXT
+  // 之外显式补 .cmd 后缀让 spawnSync(shell:false) 也能找到。
   const r = spawnSync(bin, ['view', 'tapd-server-cli', 'version'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: SPAWN_TIMEOUT_MS,
     encoding: 'utf8',
-    shell: useShell,
+    shell: false,
   });
   if (r.status !== 0) {
     const stderr = typeof r.stderr === 'string' ? r.stderr : '';

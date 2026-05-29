@@ -62,6 +62,15 @@ jobs:
             grep -E "$PATTERN" /tmp/pack.txt | sed 's/^/::error::  /'
             exit 1
           fi
+          # v0.3.0 起 commands/ 仅允许 .md（user-scope slash 命令模板）。其他扩展名
+          # （.txt / .bak / .json 等）误打进包会导致 install 时拷贝出非命令文件污染
+          # ~/.claude/commands/tapd-server-cli/。这条黑名单守住边界。
+          COMMANDS_NON_MD='[[:space:]]commands/[^[:space:]]+\.(txt|bak|json|js|ts|tsx|jsx|map)$'
+          if grep -E "$COMMANDS_NON_MD" /tmp/pack.txt; then
+            echo "::error::commands/ 下出现非 .md 文件，违反 v0.3.0 约定（仅 slash 命令模板）："
+            grep -E "$COMMANDS_NON_MD" /tmp/pack.txt | sed 's/^/::error::  /'
+            exit 1
+          fi
           echo "✓ npm package clean"
 
       - name: npm publish (with provenance)
