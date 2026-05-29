@@ -1,6 +1,6 @@
 {
   "name": "tapd-server-cli",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "TAPD MCP Server — expose TAPD Open API as MCP tools, with one-command install for Claude Code / Codex / OpenCode / Cursor.",
   "type": "module",
   "main": "dist/index.js",
