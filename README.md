@@ -14,7 +14,7 @@
 - **个人令牌零配置**：仅 `TAPD_TOKEN` 一个环境变量即可启动，不需要注册 TAPD 应用。
 - **一键安装到 MCP 客户端**：`npx tapd-server-cli install` 弹出 checkbox 多选 Claude Code / Codex / OpenCode / Cursor（也可命令行显式列出多家），自动写入对应客户端的 MCP 配置。
 - **对称的卸载入口**：`npx tapd-server-cli uninstall` 同款多选界面，仅移除 `mcpServers.tapd` 节，保留同节其它 server 与文件其它字段；可加 `--purge` 一并清理本地 cookie / token 文件。
-- **Slash 命令向导**：在客户端里输入 `/mcp__tapd__setup` 一键完成 PAT 验证、cookie 登录、附件下载工具装配。
+- **Slash 命令向导**：在客户端里输入 `/mcp__tapd__setup` 一键完成 PAT 验证、cookie 登录、附件下载工具装配；也可在终端直接 `npx tapd-server-cli login` 完成登录（v0.3.0 起两条等价路径）。
 - **基于令牌的权限按需暴露**：仅对令牌真正可访问的 workspace 暴露 `workspace_id` 参数枚举。
 - **资源覆盖**：stories / bugs / tasks / iterations / releases / timesheets / comments / attachments / workflows / users / categories / modules / custom-fields。
 - **错误归一化**：把 TAPD 的 `status` 字段统一映射为 MCP 工具的结构化错误（unauthenticated / permission_denied / not_found / invalid_argument / rate_limited / internal）。
@@ -76,28 +76,33 @@ npm i -g tapd-server-cli@latest
 npx -y tapd-server-cli@latest install claude-code
 ```
 
-## 在其它客户端中安装（npx install）
+## 通用形态：交互式选择 / 多客户端 / CI
 
-适用于 Codex / OpenCode / Cursor，以及在终端里批量装 / CI 场景。
+适用于在终端批量装 Claude Code / Codex / OpenCode / Cursor 任意子集，包括 CI 与脚本场景。
 
 > ⚠️ **注意 — Claude Code 的 MCP 配置文件位置**：MCP server 写在 `~/.claude.json`（家目录顶层 `mcpServers.tapd`），**不是** `~/.claude/settings.json`（permissions / hooks / UI 行为的设置）。`settings.json` 里找不到 `tapd` 不是 bug——是找错文件了。
 
-> 如果你用 **Claude Code**，请优先看上面的「在 Claude Code 中安装（推荐）」节——同一条 npx 命令同时把 user-scope slash 命令拷过去，体验更顺。
-
 > Claude Code / Codex 这两家客户端，本工具会**优先调官方 CLI**（`claude mcp add-json --scope user` / `codex mcp add`）写入配置；CLI 不可用时回退到手写配置文件，行为与旧版兼容。
 
-最省事的形态——在 TTY 终端跑零参，按空格挑想装的客户端：
+最省事的形态——在 TTY 终端跑零参，弹 checkbox 多选界面：
 
 ```bash
 npx -y tapd-server-cli install
 ```
 
-会弹出一个 checkbox 多选界面，列出 Claude Code / Codex / OpenCode / Cursor。**空格切换、回车确认**，可以一次选多家。
+界面列出 Claude Code / Codex / OpenCode / Cursor。**键位**：
+
+- `空格`：勾选/取消当前项
+- `↑/↓`：移动光标
+- `a`：全选 / 全不选切换
+- `i`：反选
+- `回车`：确认（不勾任何项 → exit 1）
+- `Ctrl-C`：取消（exit 130）
 
 也可以在命令行直接显式列出客户端（跳过交互、CI 友好）：
 
 ```bash
-# 单家（向后兼容旧用法）
+# 单家
 npx -y tapd-server-cli install claude-code
 
 # 多家（一次安装，PAT 只输入一次）
@@ -108,13 +113,12 @@ npx -y tapd-server-cli install claude-code codex opencode cursor
 命令会：
 1. 交互式提示输入 TAPD 个人访问令牌一次，复用给所有目标客户端（隐藏输入，**不留 shell history**）
 2. 把 `mcpServers.tapd` 条目写入对应客户端的配置文件（写前自动备份到 `.bak.<timestamp>`）
-3. 输出每家结果汇总（`✔ wrote` / `= no-op` / `✗ failed`），并提示重启客户端
+3. **若目标含 `claude-code`**，额外把 `commands/*.md` 拷到 `~/.claude/commands/tapd-server-cli/`（启用 `/tapd-server-cli:login` 等 user-scope slash 命令；其它客户端没有此机制，跳过）
+4. 输出每家结果汇总（`✔ wrote` / `= no-op` / `✗ failed`），并提示重启客户端
 
 任意一家失败时不会中断其他家，最后整体退出码为非零。
 
-然后**在客户端新会话里输入 `/mcp__tapd__setup`**，根据向导一路确认，登录 TAPD 后即装配完毕。
-
-只授权一次即可。cookie 持久化到 `~/.config/tapd-mcp/cookie`，过期后再跑一次 `/mcp__tapd__setup` 重新登录。
+> 装好后即可在客户端使用 MCP 工具。如果想在客户端内走"一键设置向导"，可输入 `/mcp__tapd__setup`（MCP server 内置 prompt，等价于终端 `npx tapd-server-cli login`，二选一）。
 
 ### `--dry-run` 预览
 
@@ -155,19 +159,9 @@ claude-code 的 uninstall 会**额外移除**：
 
 `--purge` 才会清 `~/.config/tapd-mcp/cookie` 与 `~/.config/tapd-mcp/token`（默认保留以便再次安装不用重新登录）。
 
-命令会：
-1. 从对应客户端的 MCP 配置中**仅移除 `mcpServers.tapd`（或 `mcp_servers.tapd`）**节，保留同节下其它 server 条目与文件其它顶层字段；
-2. 写前自动备份原文件到 `.bak.<timestamp>`，便于回滚；
-3. 输出每家结果汇总（`✔ removed` / `= (no-op)` / `[dry-run]` / `✗ failed`）；
-4. 若启用了 `--purge`，在客户端循环结束后清理 `~/.config/tapd-mcp/cookie` 与 `~/.config/tapd-mcp/token`。
+写前会自动备份原 MCP 配置文件到 `.bak.<timestamp>`，便于回滚。输出每家结果汇总：`✔ removed` / `= (no-op)` / `[dry-run]` / `✗ failed`。
 
-### `--purge` 默认关闭
-
-不加 `--purge` 时，本地 cookie 与 token 文件保留不动 —— 这样下次重新 `install` 不需要再走一遍登录授权。如果你确认要完全清零（换机器、放弃使用、合规要求等），再加 `--purge`。
-
-未启用 `--purge` 但本地实际仍有残留文件时，汇总末尾会输出一行提示：`提示：cookie/token 文件未清除（如需清除请加 --purge）`。
-
-`--purge` 只清两个固定文件名 `cookie` 和 `token`，**不会**递归删除 `~/.config/tapd-mcp/` 目录，也不会触碰目录下其它文件。
+未启用 `--purge` 但本地实际仍有残留文件时，汇总末尾会输出一行提示：`提示：cookie/token 文件未清除（如需清除请加 --purge）`。`--purge` 只清两个固定文件名 `cookie` 和 `token`，**不会**递归删除 `~/.config/tapd-mcp/` 目录，也不会触碰目录下其它文件。
 
 ### 退出码
 
@@ -216,15 +210,19 @@ curl http://127.0.0.1:8787/healthz
 - `/tapd-server-cli:logout` — 登出 TAPD（删本地 cookie）
 - `/tapd-server-cli:update` — 检查 npm 上是否有 `tapd-server-cli` 新版
 
+> 这三条 slash 命令本质是 **AI 引导提示**：让 AI 知道用户想做什么，并提示用户在终端执行对应的 `npx tapd-server-cli login` / `logout` / `update`。真正的副作用（弹浏览器、删文件、查 npm）在终端命令里发生，不在 MCP server 里。
+
 外加 MCP server 注册的 prompt（不依赖 user-scope commands）：
 
-- `/mcp__tapd__setup` — 首次设置向导（PAT 验证 + cookie 状态诊断 + 自动登录）
+- **Claude Code**：`/mcp__tapd__setup` — 首次设置向导（PAT 验证 + cookie 状态诊断 + 自动登录）
 - **Cursor**：`/tapd:setup`
 - **其它 MCP 客户端**：在客户端的 prompts 列表里找名为 `setup` 的条目
 
+> 同一 MCP prompt 在不同客户端被渲染成不同 slash 命令名（`/mcp__<server>__<prompt>` vs `/<server>:<prompt>` 等），这是各客户端按自身 namespace 规则的差异，不是 server 配置项。
+
 输入 `/mcp__tapd__setup` 即可一键完成首次设置：验证 PAT → 检查 cookie 状态 → 必要时自动弹出隔离浏览器登录 TAPD → 装配附件下载工具 → 总结。
 
-**只需要授权一次**。Cookie 默认持久化到 `~/.config/tapd-mcp/cookie`，下次启动自动加载。当 cookie 过期（一般几小时到几天）后会收到 `unauthenticated` 错误，**再跑一次 `npx tapd-server-cli login`** 或同名 slash 命令即可重新登录，或者直接对 AI 说"重新登录 TAPD"。
+> **`/mcp__tapd__setup` 与终端 `npx tapd-server-cli login` 二选一**：前者在 MCP 会话里走 server 内的 `tapd.login` 工具弹浏览器；后者直接在终端弹浏览器。两条路径最终都把 cookie 写到 `~/.config/tapd-mcp/cookie`，行为等价。Cookie 过期后两条路径任选其一重新登录，**v0.3.0 起推荐终端路径**——不依赖 server 在线、不绑定客户端 GUI。
 
 ## 高级：手动配置 MCP 客户端
 
@@ -285,6 +283,18 @@ CLI 参数（覆盖环境变量）：`--token <pat>`、`--api-base <url>`、`--h
 
 令牌也可放在 `~/.config/tapd-mcp/token`（POSIX 平台要求 mode 600）。
 
+### CLI 子命令一览（v0.3.0）
+
+```bash
+npx tapd-server-cli                              # 启动 server（默认 stdio）
+npx tapd-server-cli install [<client>...]        # 写 MCP 配置 + 拷 user-scope slash 命令（仅 claude-code）
+npx tapd-server-cli uninstall [<client>...]      # 移除 MCP 配置（claude-code 同时移除 commands 目录）
+npx tapd-server-cli login [--timeout <sec>]      # 弹独立浏览器抓 TAPD cookie（默认 300s）
+npx tapd-server-cli logout                       # 删本地 cookie 文件
+npx tapd-server-cli update [--json]              # 检查 npm 上是否有新版（仅检查不自动升级）
+npx tapd-server-cli --help                       # 详细帮助
+```
+
 ## 工具总览
 
 ### 元工具（始终注册）
@@ -295,6 +305,8 @@ CLI 参数（覆盖环境变量）：`--token <pat>`、`--api-base <url>`、`--h
 - `tapd.refresh_permissions` — 清缓存并刷新权限快照
 - `tapd.login` — 弹出隔离浏览器登录 TAPD，自动抓 cookie，热加载 `tapd.attachments.download`
 - `tapd.logout` — 清除 server 端 cookie 文件并注销下载工具
+
+> **v0.3.0 起 `tapd.login` / `tapd.logout` 与终端 `npx tapd-server-cli login` / `logout` 是两条等价并行路径**——前者由 MCP 客户端调 server 内工具触发，后者直接终端跑、不依赖 server 在线。最终都把 cookie 写到 `~/.config/tapd-mcp/cookie`，行为完全一致。MCP 工具 `tapd.update` 在 v0.3.0 已移除，对应能力由终端 `npx tapd-server-cli update` 承接。
 
 ### 资源工具（按令牌权限注册）
 
@@ -327,25 +339,33 @@ CLI 参数（覆盖环境变量）：`--token <pat>`、`--api-base <url>`、`--h
 TAPD 的附件下载 OpenAPI（`attachments::get_attachment_download_url`）需要管理员授权 scope，
 非管理员账号的 PAT 不能开通。本项目提供**借用浏览器登录态**的替代路径。
 
-### 推荐：在 Claude 里直接调 `tapd.login`
+### 推荐：终端 `npx tapd-server-cli login`（v0.3.0 起）
+
+```bash
+npx -y tapd-server-cli login
+```
+
+弹出隔离 Chrome / Edge 窗口（独立 user-data-dir，不污染日常浏览器），登录完成后自动：
+
+1. 抓取 `.tapd.cn` 域全部 cookie
+2. 拼成 `Cookie:` 头形态写入 `~/.config/tapd-mcp/cookie`（POSIX 600）
+3. 关闭浏览器、清理临时 user-data-dir
+4. exit 0
+
+**不依赖 MCP server 在线**——这是 v0.3.0 起的推荐路径。下次启动 MCP server 自动从文件加载 cookie，`tapd.attachments.download` 工具立即可用。Cookie 过期后再跑一次同样命令即可重新登录。
+
+### 备选 A：在 MCP 会话里调 `tapd.login` 工具
 
 1. 把 MCP server 配好（见上面「MCP 客户端配置示例」）—— **不需要预先配 cookie**。
 2. 在 MCP 客户端里说一句"登录 TAPD"（或显式调 `tapd.login` 工具）。
-3. 弹出隔离的 Chrome 窗口（独立 user-data-dir，不影响你日常 Chrome），自动打开 TAPD 登录页。
-4. 你登录完成 → server 自动抓取 `.tapd.cn` 域全部 cookie → 写入
-   `~/.config/tapd-mcp/cookie`（POSIX mode 600）→ 装配 `tapd.attachments.download`
-   工具 → 通过 `tools/list_changed` 通知客户端立即可见。
-5. 之后直接调用 `tapd.attachments.download` 下载附件。
+3. 弹出隔离的 Chrome 窗口，自动打开 TAPD 登录页。
+4. 你登录完成 → server 自动抓取 cookie → 写入 `~/.config/tapd-mcp/cookie` → 装配 `tapd.attachments.download` 工具 → 通过 `tools/list_changed` 通知客户端立即可见。
 
-无需重启 MCP 客户端，无需手动复制 cookie 字符串。
+无需重启 MCP 客户端，无需手动复制 cookie 字符串。与终端 `login` 是等价并行路径。
 
-下次进程启动会从文件自动加载 cookie（除非设置了 `TAPD_WEB_COOKIE` 环境变量，env 优先级最高）。
+`tapd.login` 仅在 stdio 传输模式可用（HTTP 远程模式会拒绝，因为远程 spawn 本地浏览器无意义）；终端 `npx tapd-server-cli login` 不受此限制——它根本不经 MCP 协议。
 
-cookie 过期后再调一次 `tapd.login` 即可（任意时刻），或调 `tapd.logout` 主动清除。
-
-`tapd.login` 仅在 stdio 传输模式可用（HTTP 远程模式会拒绝，因为远程 spawn 本地浏览器无意义）。
-
-### 备选：手动配 `TAPD_WEB_COOKIE` 或 `grab-cookie.mjs` 脚本
+### 备选 B：手动配 `TAPD_WEB_COOKIE` 或 `grab-cookie.mjs` 脚本
 
 适合 CI / 无 GUI 桌面 / 自动化场景：
 
@@ -357,6 +377,8 @@ TAPD_TOKEN=<pat> TAPD_WEB_COOKIE='name1=v1; name2=v2; ...' tapd-mcp
 npm run build
 node scripts/grab-cookie.mjs
 ```
+
+> v0.3.0 起方式 B 主要给 0.2.x 旧脚本用户做向后兼容；新用户推荐直接 `npx tapd-server-cli login`，更直接、不需要先 build。
 
 ### `tapd.attachments.download` 调用参数
 
