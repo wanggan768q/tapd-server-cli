@@ -17,10 +17,10 @@ import {
 import { registerLoginTools } from '../tools/login.js';
 import { registerMetaTools } from '../tools/meta.js';
 import { registerResourceTools, type ResourceToolHandle } from '../tools/register.js';
-import { registerUpdateTool } from '../tools/update.js';
 import { registerSetupPrompt } from '../prompts/setup.js';
 
 import { maskToken } from '../auth/mask.js';
+import { readPackageVersion } from './package-version.js';
 
 export interface ServerBundle {
   mcp: McpServer;
@@ -38,7 +38,9 @@ export interface ServerBundle {
 }
 
 const PACKAGE_NAME = 'tapd-mcp-server';
-const PACKAGE_VERSION = '0.1.0';
+// v0.3.0：从 package.json 动态读，避免硬编码与发布版本漂移（v0.2.x 的旧 bug：
+// 字面量长期停在 '0.1.0'，serverInfo.version 报给 MCP 客户端的不是真版本）。
+const PACKAGE_VERSION = readPackageVersion();
 
 /**
  * 装配启动流程：
@@ -162,8 +164,6 @@ export async function buildServer(config: AppConfig, logger: Logger): Promise<Se
     fileBase: config.fileBase,
     notifyToolsChanged,
   });
-
-  registerUpdateTool(mcp);
 
   registerSetupPrompt(mcp);
 

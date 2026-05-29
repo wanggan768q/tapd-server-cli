@@ -1,11 +1,20 @@
 ---
-description: 登出 TAPD（清除 server 端 cookie，撤销附件下载工具）
+description: 登出 TAPD（指引在终端运行 npx tapd-server-cli logout，删除本地 cookie）
 ---
 
-请调用 MCP 工具 `tapd.logout` 清除 TAPD 浏览器 cookie：
+请引导用户在**终端**运行：
 
-1. 删除 `~/.config/tapd-mcp/cookie` 文件
-2. `tapd.attachments.download` 工具通过 `tools/list_changed` 撤销
-3. 后续如需下载附件，需重新调用 `tapd.login`
+```bash
+npx tapd-server-cli logout
+```
 
-注意：`tapd.logout` 不会撤销 TAPD 服务端的 PAT；要完全卸载 plugin 与本地凭据，去 `/plugin uninstall tapd-server-cli` + `npx -y tapd-server-cli uninstall claude-code --purge`。
+工具行为：
+
+1. 删除 `~/.config/tapd-mcp/cookie`（如存在）
+2. 文件不存在不算错，输出 `= No cookie file found, nothing to clear.`
+3. 删完即生效；下次需要附件下载时重新跑 `npx tapd-server-cli login`
+
+> v0.3.0 起改走终端 CLI；旧 MCP 工具 `tapd.logout` 仍可用（向后兼容）。
+> 环境变量 `TAPD_WEB_COOKIE` 不在管辖范围——如有设，请用户自己 `unset TAPD_WEB_COOKIE`。
+
+要彻底卸载本工具：`npx -y tapd-server-cli uninstall claude-code --purge`。

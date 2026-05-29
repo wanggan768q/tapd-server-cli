@@ -14,6 +14,51 @@
 
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
+## [0.3.0] - 2026-05-29
+
+撤回 Claude Code plugin 体系的 minor 版本（破坏性，但 0.x 允许）。改走 npm + user-scope commands + CLI 子命令的双路径方案，安装与维护更可靠。
+
+### Removed
+
+- **Claude Code plugin 体系完全撤回**：删除 `.claude-plugin/plugin.json` / `.claude-plugin/marketplace.json` / `.mcp.json`，npm 包 `files` 不再包含 plugin manifest。撤回原因：
+  1. **`/plugin marketplace add` 不可达**：marketplace add 走 SSH 22 端口克隆 GitHub 仓库；部分受限网络（GFW）下 SSH 22 被阻断，HTTPS 克隆又不在 marketplace add 当前实现支持范围内，导致一大批用户根本进不到第 1 步
+  2. **issue #10 GUI smoke 始终未完成**：plugin 路径需要在 Claude Code GUI 内做端到端验收，本仓 maintainer 多次尝试均被网络环境阻塞
+  3. **维护成本不成比例**：4 处版本号同步、plugin/npx 双路由、`scripts/sync-plugin-version.mjs` + 钩子守卫……为一条不能被多数用户走到的路径维持双路径不划算
+- **MCP 工具 `tapd.update`**：原依赖 plugin 路径的 `dist/runtime/version.js` 编译期常量。撤回 plugin 后该常量来源不稳定（pure-npx 用户没有保障的 server runtime 版本元数据），改用终端 CLI `npx tapd-server-cli update`（同步 `package.json.version` + `npm view`），路径更直接、不依赖 server 上下文
+- 删除 `src/tools/update.ts` / `src/runtime/version.ts` / `commands/update.md` 旧版（同名新版改指 CLI）/ `scripts/sync-plugin-version.mjs` / `package.json.scripts.version` 钩子 / `.github/workflows/release.yml` 的 plugin 版本同步守卫步骤
+- 测试随之删除：`test/unit/plugin-manifest.test.ts` / `test/unit/update-logic.test.ts` / `test/unit/update-tool.test.ts`
+- `meta_tools` 数组移除 `'tapd.update'` 条目（`src/tools/meta.ts`）
+
+### Added
+
+- **CLI 子命令 `login` / `logout` / `update`** —— 替代被撤回的 plugin 内 slash 命令对应的 MCP 工具调用：
+  - `npx tapd-server-cli login [--timeout <seconds>]` —— 弹独立 Chrome / Edge 抓 TAPD cookie，写 `~/.config/tapd-mcp/cookie`（POSIX 600）；底层复用 `src/auth/browser-login.ts` 与 `src/auth/cookie-store.ts`
+  - `npx tapd-server-cli logout` —— 删除 cookie 文件；不存在不算错
+  - `npx tapd-server-cli update [--json]` —— 读本地 `package.json.version`，spawn `npm view tapd-server-cli version` 拿 latest；网络失败仍 exit 0（输出 `Network error` / JSON `fetch_error`），不阻断脚本；自带简易 SemVer 比较，无新依赖
+- **`install claude-code` 同时拷贝 user-scope slash 命令模板** —— 安装时把仓库 `commands/*.md` 拷到 `~/.claude/commands/tapd-server-cli/`，对应 `/tapd-server-cli:login` / `/tapd-server-cli:logout` / `/tapd-server-cli:update` 三条 slash 命令在 Claude Code 内即用，无需 plugin 体系
+- 新增模块：`src/installer/package-root.ts`（包根定位）、`src/installer/user-scope-commands.ts`（installCommands / removeCommands）、`src/commands/{login,logout,update}-handler.ts`（CLI 子命令实现）
+- 新增 27 个测试用例：`user-scope-commands.test.ts` (10) + `installer-flow.test.ts` 集成 (3) + `uninstall-flow.test.ts` 集成 (3) + `cli-commands.test.ts` (18) + `cli-{login,logout,update}.test.ts` (9)；全量 330 PASS
+
+### Changed
+
+- **`uninstall claude-code` 行为扩展**：除清 `mcpServers.tapd` 外，会**额外移除**整个 `~/.claude/commands/tapd-server-cli/` namespace 目录（与 install 对称）；不动同级其它 namespace
+- `commands/{login,logout}.md` 内文重写为引导用户跑终端 CLI 命令；旧版直接调 MCP 工具的指令在 v0.3.0 不再准确
+- **npm 包 `files` 增加 `commands/`**（v0.3.0 起 user-scope commands 拷贝模板源），`.npmignore` 与 `.github/workflows/release.yml` 的 npm pack 守卫 grep 模式同步调整（`commands/` 不再排除）
+- README 重写：删除全部 plugin / marketplace 文案；安装节改为单条 `npx tapd-server-cli install claude-code`，附说明会同时拷 slash 命令模板；升级节、卸载节、Slash 命令节、故障排查表均按新方向更新
+
+### Notes
+
+- **此次方案取舍**：完全删 plugin 路径、用 user-scope commands + CLI 子命令承接，是综合"实际可用性 > 名义功能完整性"的取舍。CLI 子命令对所有客户端通用（不限 Claude Code）、不依赖 server 在线、不绑定 GUI 弹窗——比 plugin 内 MCP 工具更鲁棒
+- **向后兼容性**：MCP 工具 `tapd.login` / `tapd.logout` 在 server 内仍保留——已经在 server 上下文内的客户端继续工作，但首次安装路径不再依赖它们。`tapd.update` 工具被移除（替代 = 终端 CLI）
+- **服务器代码 / TAPD API 调用 / 资源工具行为零变化**：本版本只重构分发与运行时入口，server runtime 调 TAPD Open API 的逻辑完全不动
+
+### Spec (OpenSpec)
+
+3 个独立 change 同 PR 推进：
+- `remove-claude-code-plugin` —— 删除 capability `claude-code-plugin`，撤回所有 plugin 相关 spec
+- `install-claude-code-user-scope-commands` —— 新增 capability `installer-user-scope-commands`，规约 install/uninstall 时 `commands/*.md` 拷贝/移除契约
+- `add-cli-subcommands-login-logout-update` —— 修改 capability `installer-cli`，新增 3 个 Requirement 描述 login/logout/update 子命令的输入/输出/退出码契约
+
 ## [0.2.2] - 2026-05-28
 
 Hotfix 版本。修复 v0.2.1 发版时引入的版本元数据漂移 bug——已发布 `tapd-server-cli@0.2.1` 的 npm tarball 内 `dist/runtime/version.js` 实际编译出 `VERSION = '0.2.0'`，落后包元数据一个 patch。

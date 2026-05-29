@@ -1,8 +1,8 @@
-# Plugin packaging — never publish to npm registry
+# Plugin remnants — guard against re-introduction (plugin packaging was
+# removed in v0.3.0; these patterns kept as defense-in-depth)
 .claude-plugin/
 .codex-plugin/
 .mcp.json
-commands/
 skills/
 
 # OpenSpec / docs not for end users of npm package
