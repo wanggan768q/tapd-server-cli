@@ -339,3 +339,127 @@ describe('runInstall — claude-code prefers claude CLI', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 });
+
+describe('runInstall — claude-code copies user-scope commands', () => {
+  let tempHome: string;
+  let tempCommandsSrc: string;
+  let tempClaudeJsonDir: string;
+
+  beforeEach(() => {
+    tempHome = mkdtempSync(join(tmpdir(), 'tapd-uscmd-home-'));
+    tempCommandsSrc = mkdtempSync(join(tmpdir(), 'tapd-uscmd-src-'));
+    tempClaudeJsonDir = mkdtempSync(join(tmpdir(), 'tapd-uscmd-cj-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempHome, { recursive: true, force: true });
+    await fs.rm(tempCommandsSrc, { recursive: true, force: true });
+    await fs.rm(tempClaudeJsonDir, { recursive: true, force: true });
+  });
+
+  it('copies commands/*.md to ~/.claude/commands/tapd-server-cli/ after writing mcp.json', async () => {
+    // 注�� commands 源
+    await fs.writeFile(join(tempCommandsSrc, 'login.md'), '---\ndescription: login\n---\n# login');
+    await fs.writeFile(join(tempCommandsSrc, 'logout.md'), '---\ndescription: logout\n---\n# logout');
+
+    // 让 preferClaudeCliInstall 返 fallback、并 spy 新实例的 configPath，
+    // 顺序很关键：先 resetModules + doMock，再动态 import，再对动态实例 spy
+    // （直接对顶部静态 import 的 claudeCodeAdapter spy 在 resetModules 后会失效）
+    vi.resetModules();
+    vi.doMock('../../src/installer/claude-cli.js', () => ({
+      preferClaudeCliInstall: async () => ({ used: 'fallback' }),
+    }));
+    const { runInstall: freshRunInstall } = await import('../../src/installer/flow.js');
+    const { claudeCodeAdapter: freshAdapter } = await import(
+      '../../src/installer/adapters/claude-code.js'
+    );
+
+    // claude.json 写入路径走 tempClaudeJsonDir，避免污染真实 ~/.claude.json
+    const fakeClaudePath = join(tempClaudeJsonDir, 'claude.json');
+    vi.spyOn(freshAdapter, 'configPath').mockReturnValue(fakeClaudePath);
+
+    const { stdout, stderr, out } = fakeStdio();
+    const result = await freshRunInstall({
+      clients: ['claude-code'],
+      dryRun: false,
+      stdout,
+      stderr,
+      tokenOverride: 'pat-xxx',
+      homedirOverride: tempHome,
+      commandsSrcOverride: tempCommandsSrc,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.results[0]?.outcome).toBe('wrote');
+    expect(result.results[0]?.userScopeCommands?.installed.sort()).toEqual([
+      'login.md',
+      'logout.md',
+    ]);
+
+    // 文件真的拷过去了
+    const targetDir = join(tempHome, '.claude', 'commands', 'tapd-server-cli');
+    await expect(fs.readFile(join(targetDir, 'login.md'), 'utf8')).resolves.toContain('# login');
+    await expect(fs.readFile(join(targetDir, 'logout.md'), 'utf8')).resolves.toContain('# logout');
+
+    // stdout 显示成功 1 行
+    expect(out.join('')).toContain('user-scope commands installed');
+
+    vi.doUnmock('../../src/installer/claude-cli.js');
+  });
+
+  it('does not copy commands when dry-run', async () => {
+    await fs.writeFile(join(tempCommandsSrc, 'login.md'), '# login');
+
+    const fakeClaudePath = join(tempClaudeJsonDir, 'claude.json');
+    vi.spyOn(claudeCodeAdapter, 'configPath').mockReturnValue(fakeClaudePath);
+
+    const { stdout, stderr } = fakeStdio();
+    const result = await runInstall({
+      clients: ['claude-code'],
+      dryRun: true,
+      stdout,
+      stderr,
+      tokenOverride: 'pat-xxx',
+      homedirOverride: tempHome,
+      commandsSrcOverride: tempCommandsSrc,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.results[0]?.outcome).toBe('dry-run');
+    expect(result.results[0]?.userScopeCommands).toBeUndefined();
+
+    // dry-run 不创建目录
+    await expect(fs.access(join(tempHome, '.claude'))).rejects.toThrow();
+  });
+
+  it('does not copy commands for non-claude-code clients (codex)', async () => {
+    await fs.writeFile(join(tempCommandsSrc, 'login.md'), '# login');
+
+    const fakeCodexPath = join(tempClaudeJsonDir, 'config.toml');
+    vi.spyOn(codexAdapter, 'configPath').mockReturnValue(fakeCodexPath);
+
+    vi.resetModules();
+    vi.doMock('../../src/installer/codex-cli.js', () => ({
+      preferCodexCliInstall: async () => ({ used: 'fallback' }),
+    }));
+    const { runInstall: freshRunInstall } = await import('../../src/installer/flow.js');
+
+    const { stdout, stderr } = fakeStdio();
+    const result = await freshRunInstall({
+      clients: ['codex'],
+      dryRun: false,
+      stdout,
+      stderr,
+      tokenOverride: 'pat-xxx',
+      homedirOverride: tempHome,
+      commandsSrcOverride: tempCommandsSrc,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.results[0]?.userScopeCommands).toBeUndefined();
+    // codex install 不应该创建 ~/.claude/commands/
+    await expect(fs.access(join(tempHome, '.claude'))).rejects.toThrow();
+
+    vi.doUnmock('../../src/installer/codex-cli.js');
+  });
+});

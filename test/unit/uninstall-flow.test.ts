@@ -571,3 +571,112 @@ describe('runUninstall — summary format alignment with install', () => {
     expect(io.out.join('')).toContain('✗ claude-code');
   });
 });
+
+describe('runUninstall — claude-code removes user-scope commands directory', () => {
+  let tempHome: string;
+  let tempClaudeJsonDir: string;
+
+  beforeEach(() => {
+    tempHome = mkdtempSync(join(tmpdir(), 'tapd-uscmd-rm-home-'));
+    tempClaudeJsonDir = mkdtempSync(join(tmpdir(), 'tapd-uscmd-rm-cj-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempHome, { recursive: true, force: true });
+    await fs.rm(tempClaudeJsonDir, { recursive: true, force: true });
+  });
+
+  it('removes ~/.claude/commands/tapd-server-cli/ when uninstalling claude-code', async () => {
+    // 准备 user-scope commands 目录（模拟 install 留下的状态）
+    const cmdsDir = join(tempHome, '.claude', 'commands', 'tapd-server-cli');
+    await fs.mkdir(cmdsDir, { recursive: true });
+    await fs.writeFile(join(cmdsDir, 'login.md'), '# login');
+    await fs.writeFile(join(cmdsDir, 'logout.md'), '# logout');
+
+    // 准备 ~/.claude.json with mcpServers.tapd 让 uninstall 有东西删
+    const fakeClaudePath = join(tempClaudeJsonDir, 'claude.json');
+    await fs.writeFile(
+      fakeClaudePath,
+      JSON.stringify(
+        { mcpServers: { tapd: { command: 'npx', args: ['-y', 'tapd-server-cli'], env: {} } } },
+        null,
+        2,
+      ),
+    );
+    vi.spyOn(claudeCodeAdapter, 'configPath').mockReturnValue(fakeClaudePath);
+
+    const io = fakeStdio();
+    const r = await runUninstall({
+      clients: ['claude-code'],
+      dryRun: false,
+      purge: false,
+      stdout: io.stdout,
+      stderr: io.stderr,
+      homedirOverride: tempHome,
+    });
+
+    expect(r.exitCode).toBe(0);
+    // commands 目录被删
+    await expect(fs.access(cmdsDir)).rejects.toThrow();
+    expect(io.out.join('')).toContain('user-scope commands removed');
+  });
+
+  it('reports notPresent silently when commands directory does not exist', async () => {
+    // 准备 ~/.claude.json with mcpServers.tapd
+    const fakeClaudePath = join(tempClaudeJsonDir, 'claude.json');
+    await fs.writeFile(
+      fakeClaudePath,
+      JSON.stringify(
+        { mcpServers: { tapd: { command: 'npx', args: ['-y', 'tapd-server-cli'], env: {} } } },
+        null,
+        2,
+      ),
+    );
+    vi.spyOn(claudeCodeAdapter, 'configPath').mockReturnValue(fakeClaudePath);
+
+    const io = fakeStdio();
+    const r = await runUninstall({
+      clients: ['claude-code'],
+      dryRun: false,
+      purge: false,
+      stdout: io.stdout,
+      stderr: io.stderr,
+      homedirOverride: tempHome,
+    });
+
+    expect(r.exitCode).toBe(0);
+    expect(io.out.join('')).toContain('no user-scope commands to remove');
+  });
+
+  it('does not touch user-scope commands on dry-run', async () => {
+    const cmdsDir = join(tempHome, '.claude', 'commands', 'tapd-server-cli');
+    await fs.mkdir(cmdsDir, { recursive: true });
+    await fs.writeFile(join(cmdsDir, 'login.md'), '# login');
+
+    const fakeClaudePath = join(tempClaudeJsonDir, 'claude.json');
+    await fs.writeFile(
+      fakeClaudePath,
+      JSON.stringify(
+        { mcpServers: { tapd: { command: 'npx', args: ['-y', 'tapd-server-cli'], env: {} } } },
+        null,
+        2,
+      ),
+    );
+    vi.spyOn(claudeCodeAdapter, 'configPath').mockReturnValue(fakeClaudePath);
+
+    const io = fakeStdio();
+    const r = await runUninstall({
+      clients: ['claude-code'],
+      dryRun: true,
+      purge: false,
+      stdout: io.stdout,
+      stderr: io.stderr,
+      homedirOverride: tempHome,
+    });
+
+    expect(r.exitCode).toBe(0);
+    // dry-run 不删 commands 目录
+    await expect(fs.access(cmdsDir)).resolves.toBeUndefined();
+    await expect(fs.access(join(cmdsDir, 'login.md'))).resolves.toBeUndefined();
+  });
+});

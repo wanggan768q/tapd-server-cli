@@ -15,6 +15,9 @@ import { promptToken, TokenInputError, type PromptOptions } from './prompt.js';
 import { type ClientAdapter } from './adapter.js';
 import { preferClaudeCliInstall } from './claude-cli.js';
 import { preferCodexCliInstall } from './codex-cli.js';
+import { resolveCommandsSrc } from './package-root.js';
+import { installCommands, type InstallCommandsResult } from './user-scope-commands.js';
+import { homedir } from 'node:os';
 
 const ALL_ADAPTERS: Record<string, ClientAdapter> = {
   [claudeCodeAdapter.key]: claudeCodeAdapter,
@@ -36,6 +39,8 @@ export interface PerClientResult {
   error?: string;
   /** B1：CLI 优先尝试失败、降级到手写文件路径时的诊断（不阻塞流程，仅供用户感知） */
   fallbackReason?: string;
+  /** v0.3.0：claude-code install 时把 user-scope commands 拷到 ~/.claude/commands/tapd-server-cli/ 的结果 */
+  userScopeCommands?: InstallCommandsResult;
 }
 
 export interface RunInstallOptions {
@@ -48,6 +53,10 @@ export interface RunInstallOptions {
   stderr?: NodeJS.WritableStream;
   /** 测试用：覆盖 token 输入（跳过交互） */
   tokenOverride?: string;
+  /** 测试用：覆盖用户家目录（默认 os.homedir()），用于隔离 user-scope commands 拷贝目标 */
+  homedirOverride?: string;
+  /** 测试用：覆盖 commands 源目录（默认从 npm 包根解析），用于注入 fixture */
+  commandsSrcOverride?: string;
 }
 
 export interface RunInstallResult {
@@ -132,6 +141,37 @@ export async function runInstall(opts: RunInstallOptions): Promise<RunInstallRes
     TAPD_LOG_LEVEL: 'info',
   };
 
+  // v0.3.0：claude-code install 成功后，把 npm 包内 commands/*.md 拷到
+  // ~/.claude/commands/tapd-server-cli/，让 user-scope slash 命令机制识别
+  // /tapd-server-cli:login /logout /update。失败 graceful（不阻塞 mcp.json 写入）。
+  const commandsHome = opts.homedirOverride ?? homedir();
+  const commandsSrc = opts.commandsSrcOverride ?? resolveCommandsSrc();
+  const installUserScopeCommands = (): InstallCommandsResult | undefined => {
+    if (opts.dryRun) return undefined;
+    const r = installCommands(commandsHome, commandsSrc);
+    if (r.srcMissing) {
+      stderr.write(
+        'warning: commands directory not found in package, skipping user-scope commands install\n',
+      );
+    } else if (r.mkdirError) {
+      stderr.write(
+        `warning: failed to mkdir ~/.claude/commands/tapd-server-cli/ (${r.mkdirError})\n`,
+      );
+    } else if (r.failed.length > 0) {
+      for (const f of r.failed) {
+        stderr.write(`warning: failed to copy commands/${f.file}: ${f.error}\n`);
+      }
+    }
+    if (r.installed.length > 0) {
+      const note =
+        r.skipped.length > 0
+          ? ` (${r.installed.length} files, skipped: ${r.skipped.join(', ')})`
+          : ` (${r.installed.length} files)`;
+      stdout.write(`✓ user-scope commands installed${note}\n`);
+    }
+    return r;
+  };
+
   // 3) 顺序处理每家，单家失败不中断其他家
   const results: PerClientResult[] = [];
 
@@ -161,10 +201,13 @@ export async function runInstall(opts: RunInstallOptions): Promise<RunInstallRes
             ? '<via claude mcp add-json --scope user>'
             : '<via codex mcp add>';
         stdout.write(`已通过官方 CLI 注册 ${adapter.displayName}：${via}\n`);
+        const userScopeCommands =
+          key === 'claude-code' ? installUserScopeCommands() : undefined;
         results.push({
           client: key,
           outcome: 'wrote',
           path: via,
+          userScopeCommands,
         });
         continue;
       }
@@ -208,12 +251,16 @@ export async function runInstall(opts: RunInstallOptions): Promise<RunInstallRes
       stdout.write(`已写入 ${adapter.displayName} 配置：${target}\n`);
       if (backupHint) stdout.write(`${backupHint}\n`);
 
+      const userScopeCommands =
+        key === 'claude-code' ? installUserScopeCommands() : undefined;
+
       results.push({
         client: key,
         outcome: 'wrote',
         path: target,
         backup: backupHint,
         fallbackReason,
+        userScopeCommands,
       });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
