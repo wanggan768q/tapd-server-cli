@@ -12,6 +12,9 @@
  *   spawnSync 在 `shell: false` 下不走 PATHEXT 解析会 ENOENT。这里在 win32
  *   上按顺序尝试 `claude.cmd` → `claude.ps1` → `claude.exe` → `claude`，
  *   命中即用其名启动；仍保持 `shell: false` 不引入 shell 注入面。
+ *
+ * Note: preferClaudeCliInstall 顶层包 try/catch 把注入式 probe 的 throw 转成
+ *       fallback + redacted stderr，确保对外"永不抛"契约（与 codex-cli 对称）。
  */
 
 import { spawnSync } from 'node:child_process';
@@ -21,7 +24,10 @@ import { redact, redactError } from './redact.js';
 export interface ClaudeCliProbe {
   /** 检查 `claude --version` 是否可执行（PATH 里有且能跑通） */
   isAvailable(): boolean;
-  /** 调用 `claude mcp add-json <name> '<json>' --scope <scope>`，返回成功/失败 + stderr */
+  /**
+   * 调用 `claude mcp add-json <name> '<json>' --scope <scope>`，返回成功/失败 + stderr。
+   * 超时返回 `{ ok: false, stderr: '' }`（spawn timeout 时 stderr 通常为空）。
+   */
   addJson(
     name: string,
     json: string,

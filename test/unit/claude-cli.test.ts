@@ -45,7 +45,7 @@ describe('preferClaudeCliInstall', () => {
     expect(calls[0]?.name).toBe('tapd');
     expect(calls[0]?.scope).toBe('user');
     const payload = JSON.parse(calls[0]!.json) as Record<string, unknown>;
-    expect(payload).toMatchObject({
+    expect(payload).toEqual({
       type: 'stdio',
       command: 'npx',
       args: ['-y', 'tapd-server-cli'],
