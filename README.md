@@ -32,49 +32,57 @@
 
 ## 在 Claude Code 中安装（推荐）
 
-最简单的安装方式——**完全在 Claude Code 内完成**，不需要终端：
+最简单的安装方式——一条 npx 命令：
 
-```text
-> /plugin marketplace add wanggan768q/tapd-server-cli
-> /plugin install tapd-server-cli@tapd-server-cli
+```bash
+npx -y tapd-server-cli install claude-code
 ```
 
-弹窗会要求你输入「TAPD 个人访问令牌」（PAT），一次性输入即可：
+会做三件事：
 
-- PAT 走系统 keychain（macOS/Windows 钥匙串、Linux 走 `~/.claude/.credentials.json`），**不会落普通配置文件**
-- Plugin 启用后 MCP server 自动通过 `npx -y tapd-server-cli` 拉起，env 注入 PAT
-- `/mcp` 应该立即显示 `tapd ✓ Connected`
+1. 提示输入 TAPD 个人访问令牌（PAT），写入 `~/.claude.json` 顶层 `mcpServers.tapd`（隐藏输入，**不留 shell history**）
+2. 优先调 `claude mcp add-json --scope user` 注册（不可用时回退手写文件，行为兼容）
+3. 复制 `commands/*.md` 到 `~/.claude/commands/tapd-server-cli/`，启用 user-scope slash 命令：
+   - `/tapd-server-cli:login` — 登录 TAPD（弹独立浏览器抓 cookie）
+   - `/tapd-server-cli:logout` — 登出 TAPD
+   - `/tapd-server-cli:update` — 检查是否有新版
 
-> **注意 — 配置文件位置**：Claude Code 的 MCP 配置存在 `~/.claude.json`（家目录顶层），不是 `~/.claude/settings.json`（settings 文件不放 MCP）。如果你之前在 `settings.json` 里找过 `tapd` 配置没找到，是找错文件了——plugin 路径完全屏蔽这个困惑。
+> **配置文件位置**：Claude Code 的 MCP 配置存在 `~/.claude.json`（家目录顶层），不是 `~/.claude/settings.json`（settings 文件不放 MCP）。如果你之前在 `settings.json` 里找过 `tapd` 配置没找到，是找错文件了。
+
+> v0.3.0 起本工具不再以 Claude Code plugin 形式分发（SSH 22 在部分网络下被阻断，marketplace 添加不可达）。改走 npm + user-scope commands 双路径，安装更可靠。
 
 ### 首次使用附件下载
 
-附件下载需要浏览器 cookie（PAT 不够，TAPD 限制）。在 Claude Code 会话里输入：
+附件下载需要浏览器 cookie（PAT 不够，TAPD 限制）。在终端跑：
 
-```text
-> /tapd-server-cli:login
+```bash
+npx -y tapd-server-cli login
 ```
 
-会弹出隔离浏览器窗口，登录 TAPD 后 cookie 自动持久化，附件下载工具立即可用。
+会弹出隔离 Chrome / Edge 窗口，登录 TAPD 后 cookie 自动持久化到 `~/.config/tapd-mcp/cookie`，附件下载工具立即可用。
 
-### 升级（已通过 `npx install claude-code` 装过）
+> 也可以在 Claude Code 会话里输入 `/tapd-server-cli:login` 让 AI 引导你跑这条命令——本质是同一条终端命令，user-scope slash 命令只是入口提示。
 
-如果你之前用 `npx tapd-server-cli install claude-code` 装过，要切换到 plugin：
+### 升级
 
-1. **先卸载老的 user-scope 配置**：`npx tapd-server-cli uninstall claude-code`（清掉 `~/.claude.json` 顶层 `mcpServers.tapd`）
-2. 在 Claude Code 内 `/plugin marketplace add wanggan768q/tapd-server-cli`
-3. `/plugin install tapd-server-cli@tapd-server-cli`，弹窗输入 PAT
-4. 重启 Claude Code
+```bash
+# 检查 npm 上是否有新版（仅检查，不自动升级）
+npx -y tapd-server-cli update
 
-> 按 Claude Code 官方优先级（local > project > **user > plugin** > claude.ai），如果不先卸载 user scope 那条 `tapd` 配置，会**屏蔽** plugin 提供的同名 server。
+# 全局升级
+npm i -g tapd-server-cli@latest
+
+# 或者下次 npx 自动用最新版（不用手动升级）
+npx -y tapd-server-cli@latest install claude-code
+```
 
 ## 在其它客户端中安装（npx install）
 
 适用于 Codex / OpenCode / Cursor，以及在终端里批量装 / CI 场景。
 
-> ⚠️ **注意 — Claude Code 的 MCP 配置文件位置**：MCP server 写在 `~/.claude.json`（家目录顶层 `mcpServers.tapd`），**不是** `~/.claude/settings.json`（permissions / hooks / UI 行为的设置）。`settings.json` 里找不到 `tapd` 不是 bug——是找错文件了。如果你不想再纠结这两个文件，**改用上面的 plugin 路径**，PAT 直接进 keychain，不用碰任何配置文件。
+> ⚠️ **注意 — Claude Code 的 MCP 配置文件位置**：MCP server 写在 `~/.claude.json`（家目录顶层 `mcpServers.tapd`），**不是** `~/.claude/settings.json`（permissions / hooks / UI 行为的设置）。`settings.json` 里找不到 `tapd` 不是 bug——是找错文件了。
 
-> 如果你用 **Claude Code**，请优先看上面的「在 Claude Code 中安装（推荐）」节——plugin 路径更简单、PAT 直接进 keychain。
+> 如果你用 **Claude Code**，请优先看上面的「在 Claude Code 中安装（推荐）」节——同一条 npx 命令同时把 user-scope slash 命令拷过去，体验更顺。
 
 > Claude Code / Codex 这两家客户端，本工具会**优先调官方 CLI**（`claude mcp add-json --scope user` / `codex mcp add`）写入配置；CLI 不可用时回退到手写配置文件，行为与旧版兼容。
 
@@ -128,22 +136,6 @@ TAPD_TOKEN=<your-pat> npx -y tapd-server-cli install claude-code codex
 
 ## 卸载
 
-### Claude Code 用户（plugin 路径）
-
-```text
-> /plugin uninstall tapd-server-cli
-```
-
-如需同时清理本地 cookie / token 文件：
-
-```bash
-npx -y tapd-server-cli uninstall claude-code --purge
-```
-
-### 其它客户端（npx install 路径）
-
-与安装对称的撤销入口。零参 TTY 弹 checkbox 多选；显式列出客户端走非交互流程；`--dry-run` 只预览；`--purge` 额外清理本地凭据文件。**不需要输入 PAT**（卸载不读 token）。
-
 ```bash
 # 交互式多选（TTY 下，空格选，回车确认）
 npx -y tapd-server-cli uninstall
@@ -152,12 +144,16 @@ npx -y tapd-server-cli uninstall
 npx -y tapd-server-cli uninstall claude-code
 npx -y tapd-server-cli uninstall claude-code codex opencode cursor
 
-# 预览不写入
-npx -y tapd-server-cli uninstall claude-code --dry-run
-
-# 同时清理本地 cookie + token 文件（完全清零）
+# 同时清理 ~/.claude/commands/tapd-server-cli/ + 本地 cookie/token 文件
 npx -y tapd-server-cli uninstall claude-code --purge
 ```
+
+claude-code 的 uninstall 会**额外移除**：
+
+- `~/.claude/commands/tapd-server-cli/` 整个 namespace 目录（v0.3.0 起：install 拷过去的 user-scope slash 命令）
+- `mcpServers.tapd` 节（保留同节下其它 server 条目与文件其它顶层字段）
+
+`--purge` 才会清 `~/.config/tapd-mcp/cookie` 与 `~/.config/tapd-mcp/token`（默认保留以便再次安装不用重新登录）。
 
 命令会：
 1. 从对应客户端的 MCP 配置中**仅移除 `mcpServers.tapd`（或 `mcp_servers.tapd`）**节，保留同节下其它 server 条目与文件其它顶层字段；
@@ -214,18 +210,21 @@ curl http://127.0.0.1:8787/healthz
 
 ## Slash 命令（首次设置 / 状态诊断）
 
-MCP server 注册了一个名为 `setup` 的 prompt，客户端会渲染成一条 slash 命令：
+**Claude Code（user-scope commands，v0.3.0 起默认）** —— `npx tapd-server-cli install claude-code` 会把这三条命令拷到 `~/.claude/commands/tapd-server-cli/`：
 
-- **Claude Code（plugin 路径，推荐）**：
-  - `/tapd-server-cli:login` — 登录 TAPD（启用附件下载）
-  - `/tapd-server-cli:logout` — 登出 TAPD
-  - `/mcp__tapd__setup` — 首次设置向导（含 PAT 验证 + cookie 状态诊断）
+- `/tapd-server-cli:login` — 登录 TAPD（弹独立浏览器抓 cookie，启用附件下载）
+- `/tapd-server-cli:logout` — 登出 TAPD（删本地 cookie）
+- `/tapd-server-cli:update` — 检查 npm 上是否有 `tapd-server-cli` 新版
+
+外加 MCP server 注册的 prompt（不依赖 user-scope commands）：
+
+- `/mcp__tapd__setup` — 首次设置向导（PAT 验证 + cookie 状态诊断 + 自动登录）
 - **Cursor**：`/tapd:setup`
 - **其它 MCP 客户端**：在客户端的 prompts 列表里找名为 `setup` 的条目
 
-输入即可一键完成首次设置：验证 PAT → 检查 cookie 状态 → 必要时自动弹出隔离浏览器登录 TAPD → 装配附件下载工具 → 总结。
+输入 `/mcp__tapd__setup` 即可一键完成首次设置：验证 PAT → 检查 cookie 状态 → 必要时自动弹出隔离浏览器登录 TAPD → 装配附件下载工具 → 总结。
 
-**只需要授权一次**。Cookie 默认持久化到 `~/.config/tapd-mcp/cookie`，下次启动自动加载。当 cookie 过期（一般几小时到几天）后会收到 `unauthenticated` 错误，**再跑一次同样的 slash 命令即可重新登录**，或者直接对 AI 说"重新登录 TAPD"。
+**只需要授权一次**。Cookie 默认持久化到 `~/.config/tapd-mcp/cookie`，下次启动自动加载。当 cookie 过期（一般几小时到几天）后会收到 `unauthenticated` 错误，**再跑一次 `npx tapd-server-cli login`** 或同名 slash 命令即可重新登录，或者直接对 AI 说"重新登录 TAPD"。
 
 ## 高级：手动配置 MCP 客户端
 
@@ -405,7 +404,7 @@ tapd.attachments.download
 | `tapd.login` 返回 `invalid_argument`（找不到 Chrome / Edge） | 本机无浏览器或路径未覆盖 | 安装 Chrome / Edge，或设置 `BROWSER` 环境变量指向浏览器 exe，或回退用 `TAPD_WEB_COOKIE` env |
 | `tapd.login` 返回 `invalid_argument`（提示"仅支持 stdio"） | server 启用了 HTTP 传输 | 改用 stdio 启动（不设置 `TAPD_MCP_HTTP_PORT`），或手动配 `TAPD_WEB_COOKIE` env |
 | `/mcp` 看不到 `tapd`（Claude Code） | 配置文件位置错或 Claude Code 未重启 | 检查 `~/.claude.json`（**不是** `~/.claude/settings.json`）；完全退出 Claude Code 进程后重启；或在新会话跑 `claude mcp list` 确认 |
-| 已通过 `npx install claude-code` 装过、又装 plugin 但 `/mcp` 仍只看到一份 `tapd` | 按 Claude Code 优先级，user scope 屏蔽 plugin | 先 `npx tapd-server-cli uninstall claude-code` 清掉 `~/.claude.json` 顶层 `mcpServers.tapd`，再用 plugin |
+| 已通过 `npx install claude-code` 装过、又装 plugin 但 `/mcp` 仍只看到一份 `tapd` | 已无关：v0.3.0 起不再以 plugin 形式分发 | 仅 `npx -y tapd-server-cli install claude-code` 即可（同时安装 user-scope slash 命令） |
 
 ## 开发
 

@@ -14,6 +14,9 @@
 
 import { loadToken } from './auth/token.js';
 import { parseCli, UnknownClientError } from './cli.js';
+import { loginCommand } from './commands/login-handler.js';
+import { logoutCommand } from './commands/logout-handler.js';
+import { updateCommand } from './commands/update-handler.js';
 import { ConfigError, EXIT_CODE_CONFIG, resolveConfig } from './config.js';
 import { ALL_ADAPTERS, runInstall } from './installer/flow.js';
 import {
@@ -97,6 +100,21 @@ async function main() {
       purge: parsed.purge,
     });
     process.exit(result.exitCode);
+  }
+
+  if (parsed.mode === 'login') {
+    const r = await loginCommand({ timeout: parsed.timeout });
+    process.exit(r.exitCode);
+  }
+
+  if (parsed.mode === 'logout') {
+    const r = await logoutCommand();
+    process.exit(r.exitCode);
+  }
+
+  if (parsed.mode === 'update') {
+    const r = await updateCommand({ json: parsed.json });
+    process.exit(r.exitCode);
   }
 
   const cli = parsed.args;

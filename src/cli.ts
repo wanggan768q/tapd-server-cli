@@ -14,7 +14,10 @@ import type { CliArgs } from './config.js';
 export type ParsedCli =
   | { mode: 'server'; args: CliArgs }
   | { mode: 'install'; clients: string[]; dryRun: boolean }
-  | { mode: 'uninstall'; clients: string[]; dryRun: boolean; purge: boolean };
+  | { mode: 'uninstall'; clients: string[]; dryRun: boolean; purge: boolean }
+  | { mode: 'login'; timeout: number }
+  | { mode: 'logout' }
+  | { mode: 'update'; json: boolean };
 
 const SUPPORTED_CLIENTS = ['claude-code', 'codex', 'opencode', 'cursor'] as const;
 
@@ -70,6 +73,9 @@ export function parseCli(argv: readonly string[]): ParsedCli {
 
   let installResult: { clients: string[]; dryRun: boolean } | undefined;
   let uninstallResult: { clients: string[]; dryRun: boolean; purge: boolean } | undefined;
+  let loginResult: { timeout: number } | undefined;
+  let logoutResult: true | undefined;
+  let updateResult: { json: boolean } | undefined;
 
   root
     .command('install [clients...]')
@@ -115,6 +121,44 @@ export function parseCli(argv: readonly string[]): ParsedCli {
       },
     );
 
+  root
+    .command('login')
+    .description(
+      '弹独立浏览器登录 TAPD,把 cookie 抓回并写到 ~/.config/tapd-mcp/cookie。\n' +
+        '替代旧 MCP 工具 tapd.login——直接终端运行,不需要 MCP 客户端在线。',
+    )
+    .option('--timeout <seconds>', '总等待秒数(默认 300)', (v) => {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 10 || n > 3600) {
+        throw new Error(`--timeout 必须是 10-3600 间的整数,收到 "${v}"`);
+      }
+      return n;
+    })
+    .allowExcessArguments(false)
+    .action((opts: { timeout?: number }) => {
+      loginResult = { timeout: opts.timeout ?? 300 };
+    });
+
+  root
+    .command('logout')
+    .description('删除 ~/.config/tapd-mcp/cookie。文件不存在不算错。')
+    .allowExcessArguments(false)
+    .action(() => {
+      logoutResult = true;
+    });
+
+  root
+    .command('update')
+    .description(
+      '检查 npm 上是否有 tapd-server-cli 新版。仅检查不自动升级——\n' +
+        '输出建议命令让用户决定。替代 §A 删除的 MCP 工具 tapd.update。',
+    )
+    .option('--json', '以 JSON 输出(适合脚本消费)')
+    .allowExcessArguments(false)
+    .action((opts: { json?: boolean }) => {
+      updateResult = { json: !!opts.json };
+    });
+
   root.parse(argv as string[], { from: 'user' });
 
   if (installResult) {
@@ -127,6 +171,15 @@ export function parseCli(argv: readonly string[]): ParsedCli {
       dryRun: uninstallResult.dryRun,
       purge: uninstallResult.purge,
     };
+  }
+  if (loginResult) {
+    return { mode: 'login', timeout: loginResult.timeout };
+  }
+  if (logoutResult) {
+    return { mode: 'logout' };
+  }
+  if (updateResult) {
+    return { mode: 'update', json: updateResult.json };
   }
 
   const opts = root.opts();
