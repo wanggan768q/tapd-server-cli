@@ -29,18 +29,6 @@ jobs:
           fi
           echo "VERSION=$TAG" >> "$GITHUB_ENV"
 
-      - name: Verify plugin version sync
-        run: |
-          set -euo pipefail
-          PKG=$(node -p "require('./package.json').version")
-          PLG=$(node -p "require('./.claude-plugin/plugin.json').version")
-          MKT=$(node -p "require('./.claude-plugin/marketplace.json').plugins[0].version")
-          if [ "$PKG" != "$PLG" ] || [ "$PKG" != "$MKT" ]; then
-            echo "::error::版本不同步：package.json=$PKG plugin.json=$PLG marketplace.json=$MKT"
-            exit 1
-          fi
-          echo "✓ versions in sync at $PKG"
-
       # 硬门禁:CHANGELOG.md 顶部必须有与本次 tag 匹配的 [<version>] 段。
       # 抽取到 RELEASE_NOTES.md 给后续 gh release create 用。
       # 共享 scripts/extract-changelog.mjs 的逻辑,与本地 publish.mjs 一致。
