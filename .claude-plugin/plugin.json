@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "tapd-server-cli",
   "displayName": "TAPD MCP Server",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "腾讯 TAPD 接入 Claude Code，读写需求/缺陷/迭代/工时/评论/附件等数据。",
   "author": {
     "name": "wanggan768q",

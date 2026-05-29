@@ -8,4 +8,4 @@
  * 唯一的真相来源：scripts/sync-plugin-version.mjs。手动改这个值会被下次
  * `npm version` 覆盖，应改 package.json 然后跑 `npm version` 触发同步。
  */
-export const VERSION = '0.2.1';
+export const VERSION = '0.2.2';
