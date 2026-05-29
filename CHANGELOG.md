@@ -14,6 +14,28 @@
 
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
+## [0.2.2] - 2026-05-28
+
+Hotfix 版本。修复 v0.2.1 发版时引入的版本元数据漂移 bug——已发布 `tapd-server-cli@0.2.1` 的 npm tarball 内 `dist/runtime/version.js` 实际编译出 `VERSION = '0.2.0'`，落后包元数据一个 patch。
+
+### Fixed
+
+- **npm version 钩子漏 git add 同步过的文件，导致 dist 内 VERSION 落后**：`scripts/sync-plugin-version.mjs` 在 `npm version <bump>` 触发时同步 4 个文件——`.claude-plugin/plugin.json` / `.claude-plugin/marketplace.json` / `.mcp.json` / `src/runtime/version.ts`——但 `package.json.scripts.version` 钩子的 `git add` 列表只列了前 2 个 manifest，漏掉 `version.ts` + `.mcp.json`。后果：sync 脚本写好的 `version.ts` 不进 `npm version` 自动 commit，HEAD 永远停在前一个版本号。CI 从 tag commit 拉代码 build，`dist/runtime/version.js` 跟着滞后。`tapd.update` MCP 工具靠这个值算 `current` 字段，于是对 plugin 用户报 `current=0.2.0 / latest=0.2.1`，让他们以为没装上新版。本版本把钩子的 `git add` 列表扩到 4 个文件全覆盖，并在 `test/unit/plugin-manifest.test.ts` 加元测试 `version sync targets cover all writeFileSync paths`——解析 sync 脚本的 `writeFileSync` 调用集合与钩子的 `git add` 列表对比，不一致即 FAIL，防回归。
+
+### Notes
+
+- **0.2.1 plugin 用户的迁移建议**：现存装了 0.2.1 的 plugin 用户在 `tapd.update` 看到 `current=0.2.0` 不是 client 误报、是 dist 里真写错了。**升到 0.2.2 即修**——`/plugin marketplace update tapd-server-cli` 会按 `.mcp.json` 锁定的 `~0.2.0` minor 范围自动拉到 0.2.2。
+- **服务器代码 / API / 工具行为零变化**：本版本只修元数据钩子，不动任何运行时逻辑。
+- 影响范围：仅 plugin 安装路径下 `tapd.update` 工具的 `current` 字段。`npx install` 路径不依赖此常量。
+
+### Spec (OpenSpec)
+
+- 修改 capability `claude-code-plugin`：新增 3 个 Requirement 显式约束 hook 与 sync 脚本的同步契约——
+  - "npm version 钩子 git add sync 脚本写过的全部文件"（含 4 个具体文件 + 测试守卫 scenario）
+  - "src/runtime/version.ts.VERSION 与 package.json.version 字面相等"（含读源码字面字符串的测试方式）
+  - ".mcp.json args[1] 与 package.json.version 共享 minor 范围"（PR #12 隐式契约的显式化）
+- 变更已归档到 `openspec/changes/archive/2026-05-28-fix-version-sync-git-add-missing-paths/`。
+
 ## [0.2.1] - 2026-05-28
 
 本版本累积 PR #1 / #11 / #12 / #13 四次合入,把仓库升级为 Claude Code plugin、加入官方 CLI 优先安装路径、新增 `tapd.update` 升级工具、并交付 plugin 端到端 smoke 工具链。零 breaking change;0.2.0 用户无需重装。
