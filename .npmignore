@@ -1,9 +1,11 @@
-# Plugin remnants — guard against re-introduction (plugin packaging was
-# removed in v0.3.0; these patterns kept as defense-in-depth)
+# Plugin / user-scope commands remnants — guard against re-introduction
+# (plugin packaging was removed in v0.3.0; user-scope commands were
+# removed in v0.3.2)
 .claude-plugin/
 .codex-plugin/
 .mcp.json
 skills/
+commands/
 
 # OpenSpec / docs not for end users of npm package
 openspec/

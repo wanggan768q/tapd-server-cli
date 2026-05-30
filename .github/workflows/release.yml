@@ -50,27 +50,18 @@ jobs:
 
       - run: npm run build
 
-      - name: Verify npm package excludes plugin files
+      - name: Verify npm package excludes plugin / extra files
         run: |
           set -euo pipefail
           npm pack --dry-run 2>&1 | tee /tmp/pack.txt
-          # npm pack --dry-run 输出每行格式形如 "npm notice 1.2kB commands/login.md"，
+          # npm pack --dry-run 输出每行格式形如 "npm notice 1.2kB README.md"，
           # 用 [[:space:]] 锚定文件名前的空白边界，避免 ^ 锚定永远不命中（早期 PR 的坑）；
           # .claude-plugin/ 与 .mcp.json 出现在路径任意位置都算命中。
-          # v0.3.0 起 commands/ 进 npm 包（user-scope commands 拷贝模板），从排除集移除。
-          PATTERN='(\.claude-plugin/|[[:space:]]\.mcp\.json$|[[:space:]]skills/|[[:space:]]openspec/|[[:space:]]docs/)'
+          # v0.3.2 起 commands/ 也回到排除集（user-scope commands 拷贝逻辑被撤回）。
+          PATTERN='(\.claude-plugin/|[[:space:]]\.mcp\.json$|[[:space:]]skills/|[[:space:]]openspec/|[[:space:]]docs/|[[:space:]]commands/)'
           if grep -E "$PATTERN" /tmp/pack.txt; then
-            echo "::error::plugin 文件被打包进 npm 发布包，命中以下条目："
+            echo "::error::禁止打包的文件被命中："
             grep -E "$PATTERN" /tmp/pack.txt | sed 's/^/::error::  /'
-            exit 1
-          fi
-          # v0.3.0 起 commands/ 仅允许 .md（user-scope slash 命令模板）。其他扩展名
-          # （.txt / .bak / .json 等）误打进包会导致 install 时拷贝出非命令文件污染
-          # ~/.claude/commands/tapd-server-cli/。这条黑名单守住边界。
-          COMMANDS_NON_MD='[[:space:]]commands/[^[:space:]]+\.(txt|bak|json|js|ts|tsx|jsx|map)$'
-          if grep -E "$COMMANDS_NON_MD" /tmp/pack.txt; then
-            echo "::error::commands/ 下出现非 .md 文件，违反 v0.3.0 约定（仅 slash 命令模板）："
-            grep -E "$COMMANDS_NON_MD" /tmp/pack.txt | sed 's/^/::error::  /'
             exit 1
           fi
           echo "✓ npm package clean"

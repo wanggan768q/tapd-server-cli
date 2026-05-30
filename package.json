@@ -9,7 +9,6 @@
   },
   "files": [
     "dist",
-    "commands",
     "README.md",
     "LICENSE"
   ],

@@ -21,8 +21,6 @@ import {
   purgePersistentFiles,
   type PurgeOutcome,
 } from '../auth/persistent-files.js';
-import { removeCommands, type RemoveCommandsResult } from './user-scope-commands.js';
-import { homedir } from 'node:os';
 
 const ALL_ADAPTERS: Record<string, ClientAdapter> = {
   [claudeCodeAdapter.key]: claudeCodeAdapter,
@@ -62,8 +60,6 @@ export interface RunUninstallOptions {
   stderr?: NodeJS.WritableStream;
   /** 测试钩子:覆盖 purgePersistentFiles 的 baseDir(默认 ~/.config/tapd-mcp) */
   purgeBaseDir?: string;
-  /** 测试钩子:覆盖用户家目录(默认 os.homedir())，用于隔离 user-scope commands 清理目标 */
-  homedirOverride?: string;
 }
 
 export interface RunUninstallResult {
@@ -145,7 +141,7 @@ export async function runUninstall(opts: RunUninstallOptions): Promise<RunUninst
     return { exitCode: 2, results: [] };
   }
 
-  // 早期未识别客户端检查(cli.ts 也会拒,这里作为运行时���线)
+  // 早期未识别客户端检查(cli.ts 也会拒,这里作为运行时防线)
   const unknown = opts.clients.filter((c) => !ALL_ADAPTERS[c]);
   if (unknown.length > 0) {
     stderr.write(
@@ -235,25 +231,6 @@ export async function runUninstall(opts: RunUninstallOptions): Promise<RunUninst
         path: adapter.configPath(),
         error: reason,
       });
-    }
-  }
-
-  // ── 1.5) v0.3.0：claude-code uninstall 时反向清理 ~/.claude/commands/tapd-server-cli/ ─
-  // 与 install-claude-code-user-scope-commands change 的 install 路径对称。
-  // 仅当 claude-code 客户端在 opts.clients 里、且非 dry-run 时触发。
-  // namespace 视为本工具私有——递归删整目录（含用户在该 namespace 下自加的文件）。
-  let userScopeCommandsResult: RemoveCommandsResult | undefined;
-  if (!opts.dryRun && opts.clients.includes('claude-code')) {
-    const commandsHome = opts.homedirOverride ?? homedir();
-    userScopeCommandsResult = removeCommands(commandsHome);
-    if (userScopeCommandsResult.removed) {
-      stdout.write('✓ user-scope commands removed\n');
-    } else if (userScopeCommandsResult.notPresent) {
-      stdout.write('= no user-scope commands to remove\n');
-    } else if (userScopeCommandsResult.error) {
-      stderr.write(
-        `warning: failed to remove ~/.claude/commands/tapd-server-cli/ (${userScopeCommandsResult.error})\n`,
-      );
     }
   }
 

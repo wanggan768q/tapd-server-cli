@@ -15,6 +15,34 @@
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
 
+## [0.3.2] - 2026-05-30
+
+撤回 v0.3.0 引入的 user-scope slash commands 拷贝逻辑，把 README 重排为业界主流 MCP server 标准顺序。核心动机：让本仓库的安装路径与 GitHub MCP / Notion MCP / Playwright MCP / Filesystem MCP / Supabase MCP 等标杆对齐——`claude mcp add-json` / 粘 JSON / 粘 TOML 为主流，私有便利脚本降级为可选。
+
+### Removed
+
+- **撤回 install claude-code 时的 user-scope commands 拷贝逻辑**：v0.3.0 引入的"`install claude-code` 顺手把 `commands/*.md` 拷到 `~/.claude/commands/tapd-server-cli/`"被撤回。撤回原因：
+  1. **业界 MCP 标杆都不这样**：调研 GitHub MCP / Notion MCP / Playwright MCP / Filesystem MCP / Supabase MCP 等主流 server，它们的安装方式统一是"`claude mcp add` / 粘 JSON / 一键 deeplink"，没人把 user-scope slash 命令塞进 install。本仓 v0.3.0 的拷贝逻辑显得"非标"，让安装流程从"业界标准 1 步"膨胀到"3 步带额外副作用"
+  2. **三条 slash 命令都是 thin wrapper**：`/tapd-server-cli:login` / `:logout` / `:update` 内文都是"AI 引导提示"——本质是同一条终端命令的入口提示。让用户多记 4 条命令（3 slash + 1 MCP prompt），收益只是"客户端里聊一句也能登录"，不划算
+  3. **简化 install/uninstall**：install 输出从 3 段（CLI 注册 + commands 拷贝 + 汇总）缩成 1 段；uninstall 不再需要反向清理 `~/.claude/commands/tapd-server-cli/`
+- 删除 `src/installer/user-scope-commands.ts`、`test/unit/user-scope-commands.test.ts`、`commands/login.md` / `commands/logout.md` / `commands/update.md` 三个 slash 命令源文件
+- `package.json.files` 移除 `commands` 条目，`.npmignore` 加回 `commands/` 防回归
+- `release.yml` 的 `Verify npm package excludes plugin files` step 把 `commands/` 加回 PATTERN 黑名单，删除 `COMMANDS_NON_MD` 的细粒度白名单（因为整目录已禁）
+- `RunInstallOptions` 移除 `homedirOverride` / `commandsSrcOverride` 测试钩子；`PerClientResult` 移除 `userScopeCommands` 字段
+- `RunUninstallOptions` 移除 `homedirOverride` 测试钩子
+- `installer-flow.test.ts` / `uninstall-flow.test.ts` 中 user-scope commands 集成测试段共 6 个 test 移除（10 unit + 6 integration = 16 test 总计；总数 344 → 328）
+
+### Changed
+
+- **README 重排为业界标准顺序**：参考 GitHub / Notion / Playwright / Supabase / modelcontextprotocol/servers 等标杆 README 的展开方式，把"获取 PAT → 安装到客户端（一行命令 / 粘 JSON / 粘 TOML）→ 验证"三步当主流程，私有 `npx tapd-server-cli install` 多客户端便利脚本降级到 §6"批量装多家"。安装入口对齐 Anthropic 官方推荐的 `claude mcp add-json --scope user '<json>'`，让用户搜"如何装 MCP server"时眼睛能直接落到熟悉的 JSON 片段上
+- **README 删除 user-scope slash 命令章节**：`/tapd-server-cli:login` / `:logout` / `:update` 三条 slash 命令在 v0.3.2 一并撤回，不再随 install 拷贝。终端 `npx tapd-server-cli login` / `logout` / `update` 是唯一推荐路径
+
+### Notes
+
+- **向后兼容性**：v0.3.0/0.3.1 用户从 `~/.claude/commands/tapd-server-cli/` 残留的三条 slash 命令仍可手工触发，但已不再被新版 install 拷过去。如想清理跑 `rm -rf ~/.claude/commands/tapd-server-cli/`（或在升到本版本后跑 `npx tapd-server-cli uninstall claude-code` 也会**不再**触碰该目录——所以是否清理由用户自己决定）
+- **服务器代码 / TAPD API 调用 / 资源工具行为零变化**：本变更只动 installer 与文档
+
+
 ## [0.3.1] - 2026-05-30
 
 Patch 发版。聚焦 Node.js 环境兼容性与 CI 韧性，不动业务逻辑。回应 v0.3.0 用户在 Node v24.14.1 上看到 `mute-stream@4 EBADENGINE` warning 的反馈——补上"装之前先验环境"的清晰路径，避免用户跑到 inquirer 崩溃才知道环境不对。
@@ -243,6 +271,8 @@ Hotfix 版本。修复 v0.2.1 发版时引入的版本元数据漂移 bug——�
 - 令牌脱敏:日志强制脱敏(前 4 + `***` + 后 4),令牌不落盘。
 - 附件下载 cookie 模式:浏览器登录态 cookie 持久化到 `~/.config/tapd-mcp/cookie`(POSIX mode 600),装配 `tapd.attachments.download` 工具。
 
-[Unreleased]: https://github.com/wanggan768q/tapd-server-cli/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/wanggan768q/tapd-server-cli/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/wanggan768q/tapd-server-cli/compare/v0.3.1...v0.3.2
+[Unreleased-old]: https://github.com/wanggan768q/tapd-server-cli/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/wanggan768q/tapd-server-cli/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/wanggan768q/tapd-server-cli/releases/tag/v0.1.0
