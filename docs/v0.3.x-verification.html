@@ -417,7 +417,7 @@ npx -y tapd-server-cli install
 </div>
 
 <div class="step">
-  <div class="step-title">v0.3.0 推荐：终端 CLI</div>
+  <div class="step-title">v0.3.x 推荐：终端 CLI</div>
 <pre><code>npx -y tapd-server-cli login</code></pre>
 
   <h4>预期行为</h4>
@@ -482,7 +482,7 @@ npx -y tapd-server-cli install
 <div class="step">
   <div class="step-title">检查新版（仅检查不自动升级）</div>
 <pre><code>npx -y tapd-server-cli update</code></pre>
-  <p>预期 <code>✓ Up to date (0.3.0)</code> 或 <code>↑ Update available: 0.3.0 → 0.3.x</code>，再加两条升级建议命令。网络失败仍 exit 0、不阻断。</p>
+  <p>预期 <code>✓ Up to date (0.3.1)</code> 或 <code>↑ Update available: 0.3.1 → 0.3.x</code>，再加两条升级建议命令。网络失败仍 exit 0、不阻断。</p>
 
   <div class="step-title" style="margin-top: 16px;">登出（删 cookie）</div>
 <pre><code>npx -y tapd-server-cli logout</code></pre>
@@ -720,37 +720,46 @@ ls openspec/specs/
 <h3 id="m-rollback" class="anchor-target">回滚预案</h3>
 
 <div class="callout danger">
-  <div class="callout-title">v0.3.0 是破坏性变更</div>
-  npm 不允许删除已发布版本。如果 v0.3.0 出现 critical bug，应发 patch v0.3.1 修，不要试图 unpublish。Plugin 路径已彻底撤回，<strong>不存在回滚到 v0.2.x 的可能</strong>——0.2.x 用户需手动执行迁移命令（见下）。
+  <div class="callout-title">v0.3.x 系列是 v0.2.x 的破坏性后继</div>
+  npm 不允许删除已发布版本。如果 v0.3.x 出现 critical bug，应发新 patch 修，不要试图 unpublish。Plugin 路径已彻底撤回，<strong>不存在回滚到 v0.2.x 的可能</strong>——0.2.x 用户需手动执行迁移命令（见下）。
 </div>
 
 <div class="step">
-  <h4>用户从 v0.2.x 迁移到 v0.3.0</h4>
+  <h4>用户从 v0.2.x 迁移到 v0.3.x</h4>
 <pre><code># 1. 卸载 0.2.x 时代的 plugin（如有）
 &gt; /plugin uninstall tapd-server-cli
 &gt; /plugin marketplace remove tapd-server-cli
 
-# 2. 装 v0.3.0
+# 2. 装最新 v0.3.x
 npx -y tapd-server-cli@latest install claude-code
 
 # 3. 重启 Claude Code，跑步骤 2-3 验证</code></pre>
 
-  <h4>maintainer 紧急 patch 流程（v0.3.1 hotfix 模板）</h4>
+  <h4>maintainer 紧急 patch 流程（hotfix 模板，以 v0.3.&lt;next&gt; 为例）</h4>
   <ol>
-    <li>从 main 切 <code>release/v0.3.1</code> 分支</li>
-    <li>修 bug + 加测试 + 写 OpenSpec change（<code>fix-&lt;name&gt;</code>）</li>
-    <li>CHANGELOG 加 <code>[0.3.1]</code> 段（含 <code>Fixed</code> 节）</li>
-    <li>PR + CI 绿 + merge → main</li>
-    <li><code>npm version patch</code> → <code>git push origin main v0.3.1</code></li>
+    <li>从 main 切 <code>release/v0.3.&lt;next&gt;</code> 分支（或直接在 main 攒 commit，本仓 v0.3.1 即直接走 main 路径）</li>
+    <li>修 bug + 加测试 + 必要时写 OpenSpec change（<code>fix-&lt;name&gt;</code>）</li>
+    <li>CHANGELOG <strong>必须</strong>加 <code>[0.3.&lt;next&gt;] - YYYY-MM-DD</code> 段含 <code>Fixed</code> 节——release CI 的 <code>Extract release notes</code> 步骤会硬校验，缺失直接 fail</li>
+    <li>PR + CI 绿 + merge → main（小改动可跳 PR 直接 push）</li>
+    <li><code>npm version patch</code> → <code>git push origin main v0.3.&lt;next&gt;</code></li>
     <li>等 release CI 自动 publish；用 <a href="#m-publish">§ npm publish 验证</a> 复核</li>
-    <li><code>openspec archive fix-&lt;name&gt; --yes</code> → push</li>
+    <li>有 OpenSpec change 时 <code>openspec archive fix-&lt;name&gt; --yes</code> → push</li>
   </ol>
+
+  <div class="callout warn" style="margin-top: 16px;">
+    <div class="callout-title">v0.3.1 的踩坑教训（写给未来的你）</div>
+    <ol>
+      <li><strong>提升 <code>engines.node</code> 是横切改动</strong>：4 处需要同步——<code>package.json</code> / 运行时自检 / <code>ci.yml</code> 矩阵 / <strong><code>release.yml</code> 自身的 setup-node</strong>。最容易漏的是第 4 处——release.yml 的 <code>npm test</code> 步骤跑在它声明的 Node 版本上，而非 ci.yml 矩阵。</li>
+      <li><strong>CHANGELOG 顶部硬门禁</strong>：tag 推送后 release CI 第一步 <code>extract-changelog.mjs</code> 找不到 <code>[&lt;version&gt;]</code> 段直接 fail。<code>npm version patch</code> 不会自动给你写 CHANGELOG 段——必须先手动改 <code>[Unreleased]</code> 为正式版本号 + 重建空 <code>[Unreleased]</code>。</li>
+      <li><strong>tag 推错怎么改</strong>：<code>git tag -d &lt;tag&gt;</code> + <code>git push origin :refs/tags/&lt;tag&gt;</code> 删本地 + 远端 → fix → <code>git tag &lt;tag&gt;</code> 重打 → <code>git push origin main &lt;tag&gt;</code> 重推。release CI 会基于新 tag commit 重跑。</li>
+    </ol>
+  </div>
 </div>
 
 <hr class="section-sep">
 
 <div class="meta-bar">
-  <p><strong>本文档生成时间：</strong>2026-05-30 ｜ <strong>对应代码版本：</strong>main @ <code>6886b0a</code>（v0.3.1：Node 22.13+ 自检 + CI 矩阵 22/24 + npm ci retry）｜ <strong>反馈渠道：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/issues">GitHub Issues</a></p>
+  <p><strong>本文档生成时间：</strong>2026-05-30 ｜ <strong>对应代码版本：</strong>v0.3.1 已发布到 npm（tag <code>v0.3.1</code> @ <code>1f2e599</code>）｜ <strong>文件名：</strong><code>docs/v0.3.x-verification.html</code>（v0.3.x 系列共用）｜ <strong>反馈渠道：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/issues">GitHub Issues</a></p>
 </div>
 
 </main>
