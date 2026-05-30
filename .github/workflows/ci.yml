@@ -21,7 +21,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: npm ci
+      # npm ci 偶发拉包 ETIMEDOUT（GitHub Actions runner 网络抖动 / 镜像源
+      # 路由偶尔不通），自动重试 3 次再失败。失败后才让 job 红，避免单次
+      # transient flake 拖红整条 PR。
+      - name: npm ci (with retry)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 15
+          command: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
