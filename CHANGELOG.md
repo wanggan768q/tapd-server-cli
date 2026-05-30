@@ -14,18 +14,34 @@
 
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
+
+## [0.3.1] - 2026-05-30
+
+Patch 发版。聚焦 Node.js 环境兼容性与 CI 韧性，不动业务逻辑。回应 v0.3.0 用户在 Node v24.14.1 上看到 `mute-stream@4 EBADENGINE` warning 的反馈——补上"装之前先验环境"的清晰路径，避免用户跑到 inquirer 崩溃才知道环境不对。
+
 ### Added
 
-- **Node.js 版本运行时自检**（`src/runtime/node-version-check.ts`）：`main()` 入口第一道闸门，所有子命令（install / uninstall / login / logout / update / server）执行前检查 `process.version`。低于阈值时写中文提示到 stderr 并 `exit(2)`，不再让用户跑到 inquirer / undici / commander 崩溃才知道环境不对。提示含修复建议（`nvm install 22 && nvm use 22`）。
+- **Node.js 版本运行时自检**（`src/runtime/node-version-check.ts`）：`main()` 入口第一道闸门，所有子命令（install / uninstall / login / logout / update / server）执行前检查 `process.version`。低于阈值时写中文提示到 stderr 并 `exit(2)`，不再让用户跑到 inquirer / undici / commander 崩溃才知道环境不对。提示含修复建议（`nvm install 22 && nvm use 22`）。共 11 个新单元测试覆盖：parseNodeVersion 5 个 + assertNodeVersion 6 个（pass / reject / 边界 patch / NaN 兜底）。
 
 ### Changed
 
 - **`engines.node` 从 `>=20` 提升到 `>=22.13.0`**：与实际依赖现实对齐——`commander@12` / `undici@7` 都要求 22+，`@inquirer/checkbox@5` 实测下限 20.17 但被前两者收紧到 22.13。Node 20 用户在 `npx -y tapd-server-cli` 时会看到 `EBADENGINE` warning（不阻断），随后被运行时自检拒绝，提示明确升级路径。表里如一，避免文档承诺与依赖现实漂移。
+- **CI 矩阵 Node 20→22, 新加 Node 24**（`.github/workflows/ci.yml`）：与 `engines.node` 对齐砍掉 Node 20 矩阵（运行时自检会 exit 2 拒绝它），新增 Node 24 验证用户社区主流环境（v0.3.0 那位 EBADENGINE 反馈用户跑的就是 v24.14.1）。
+- **`npm ci` 加 3 次 retry**（`nick-fields/retry@v3`，间隔 15s）：windows-latest × Node 24 在 ed3c574 的 CI run 命中 `mirrors.tencent.com` 拉包 `ETIMEDOUT`，是 GitHub Actions runner 网络偶发抖动 / 镜像源路由不稳。包住 `npm ci` 抗 transient flake；不动 typecheck/test/build 三步——它们的失败一定是代码问题，重试反而掩盖真问题。
+- **claude-cli JSDoc 与测试断言风格 backport**（PR-2 review 对称债 #33）：把 codex-cli 实施时新增的两条 JSDoc（`addJson` timeout 行为、顶层 try/catch 永不抛契约）backport 到 `src/installer/claude-cli.ts`；`test/unit/claude-cli.test.ts` 第 2 用例 payload 断言从 `toMatchObject` 升级 `toEqual` 与 codex-cli 对齐——更严格能捕获意外多出来的字段。
+
+### Docs
+
+- **README v0.3.0 主线对齐**：删除全部 plugin / marketplace 残留文案；安装节改为单条 `npx tapd-server-cli install claude-code`，附说明会同时拷 user-scope slash 命令；升级节改用 `npx tapd-server-cli update`；卸载节描述会同时移除 `~/.claude/commands/tapd-server-cli/` namespace 目录；故障排查表更新；新增"通用形态"节统一 install 多客户端文案；新增 §CLI 子命令一览表（install/uninstall/login/logout/update）。
+- **README 故障排查表新增 2 行**：① Node 版本不满足时 `npx tapd-server-cli` 直接 exit 2 + 中文提示的预期行为说明；② `mute-stream@4 EBADENGINE` warning 可忽略的解释（实测 22.13 即可，彻底消除需 22.22.2+ 或 24.15+）。
+- **新增 `docs/v0.3.0-verification.html`**（v0.3.1 同步更新覆盖到 v0.3.x 系列）：一份 HTML 验证手册，左侧 sticky 导航 + 锚点跳转，分两节——「用户验证」6 步骤（install→/mcp→whoami→login→download→update/uninstall）+「Maintainer 验证」5 节（npm publish + provenance / GitHub Release / 跨平台 smoke / OpenSpec 状态 / 回滚预案）。自适应深/浅色，`< 900px` 单列响应。
 
 ### Notes
 
 - **下游影响**：仍在 Node 20 的用户需升级到 LTS 22（22.13.0+ 即可，推荐 22.x 最新 LTS）。Node 18 用户必须升级——v0.2.x 已不再获得新功能。Windows 用户用 `nvm-windows`，macOS/Linux 用 `nvm`。
 - **mute-stream@4 EBADENGINE warning**：`@inquirer/core@11.2.0` 的传递依赖 `mute-stream@4` 要求 Node `^22.22.2 || ^24.15.0 || >=26.0.0`，比我们的 `engines.node` 还严。Node `[22.13, 22.22)` 与 `[24.0, 24.15)` 区间用户仍会看到该 warning，但**实测不影响功能**（PAT 输入隐藏、配置写入、server 启动均正常）。如想彻底消除：用 LTS 22.22.2+ 或 24.15+。
+- **服务器代码 / TAPD API 调用 / 资源工具行为零变化**：本版本只动入口闸门 + 文档 + CI，server runtime 调 TAPD Open API 的逻辑完全不动。
+- **测试**：333 → 344（+11，全为新 node-version-check 用例）。所有跨平台矩阵 PASS（ubuntu/windows/macos × Node 22/24）。
 
 
 ## [0.3.0] - 2026-05-29
