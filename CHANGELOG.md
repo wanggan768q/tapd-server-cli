@@ -14,6 +14,10 @@
 
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
+### Changed
+
+- **`release.yml` 的 `npm ci` 加 3 次 retry**（`nick-fields/retry@v3`，间隔 15s）：与 `ci.yml` 对齐。v0.3.2 release CI 第 1 次跑就命中 `mirrors.tencent.com` 拉 `signal-exit-4.1.0.tgz` ETIMEDOUT，靠 `gh run rerun --failed` 救回来。v0.3.1 给 `ci.yml` 加过同款 retry 但漏了 `release.yml`——本次补齐，让发版路径同样抗 transient flake，不再依赖人工 rerun。
+
 
 ## [0.3.2] - 2026-05-30
 

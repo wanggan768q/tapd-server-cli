@@ -42,7 +42,17 @@ jobs:
           cat RELEASE_NOTES.md
           echo "::endgroup::"
 
-      - run: npm ci
+      # npm ci 偶发拉包 ETIMEDOUT（GitHub Actions runner 网络抖动 / 镜像源
+      # 路由偶尔不通），自动重试 3 次再失败。与 ci.yml 同款逻辑——v0.3.2
+      # release CI 第 1 次跑就命中 mirrors.tencent.com ETIMEDOUT，靠 gh run
+      # rerun 救回来；这条 retry 让发版路径与业务 CI 一样抗 transient flake。
+      - name: npm ci (with retry)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 15
+          command: npm ci
 
       - run: npm run typecheck
 
