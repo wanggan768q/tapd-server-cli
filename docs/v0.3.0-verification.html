@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>tapd-server-cli v0.3.0 验证手册</title>
+<title>tapd-server-cli v0.3.x 验证手册</title>
 <style>
   :root {
     --bg: #0d1117;
@@ -286,13 +286,14 @@
 
 <main>
 
-<h1>tapd-server-cli v0.3.0 验证手册
-  <span class="version">本手册对齐 v0.3.0 主线（plugin 路径已撤回，user-scope commands + CLI 子命令双路径）</span>
+<h1>tapd-server-cli v0.3.x 验证手册
+  <span class="version">本手册对齐 v0.3.x 主线（plugin 路径已撤回，user-scope commands + CLI 子命令双路径）</span>
 </h1>
 
 <div class="meta-bar">
-  <p><strong>发布时间：</strong>2026-05-29 ｜ <strong>npm tarball：</strong><code>tapd-server-cli@0.3.0</code> ｜ <strong>GitHub Release：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/releases/tag/v0.3.0">v0.3.0</a></p>
-  <p><strong>主要变化：</strong>① 删除 Claude Code plugin 体系（marketplace add 路径撤回）；② <code>install claude-code</code> 同时拷贝 user-scope slash 命令到 <code>~/.claude/commands/tapd-server-cli/</code>；③ 新增 CLI 子命令 <code>login</code> / <code>logout</code> / <code>update</code>，替代被移除的 <code>tapd.update</code> MCP 工具。</p>
+  <p><strong>最近发布：</strong>v0.3.1（2026-05-30，含 Node 22.13+ 自检）｜ <strong>初始发布：</strong>v0.3.0（2026-05-29）｜ <strong>npm tarball：</strong><code>tapd-server-cli@latest</code> ｜ <strong>GitHub Releases：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/releases">列表</a></p>
+  <p><strong>v0.3.0 主要变化：</strong>① 删除 Claude Code plugin 体系（marketplace add 路径撤回）；② <code>install claude-code</code> 同时拷贝 user-scope slash 命令到 <code>~/.claude/commands/tapd-server-cli/</code>；③ 新增 CLI 子命令 <code>login</code> / <code>logout</code> / <code>update</code>，替代被移除的 <code>tapd.update</code> MCP 工具。</p>
+  <p><strong>v0.3.1 增量：</strong>① <code>main()</code> 入口新增 Node.js 版本运行时自检（&lt; 22.13.0 直接 exit 2 + 中文友好提示）；② <code>engines.node</code> 同步提升到 <code>&gt;=22.13.0</code>；③ CI 矩阵升级到 Node 22/24，<code>npm ci</code> 加 3 次 retry 抗 transient flake。</p>
 </div>
 
 <!-- ============================================================
@@ -313,7 +314,7 @@
 
 <div class="callout tip">
   <div class="callout-title">前置条件</div>
-  Node.js ≥ 20、本机已装 Chrome 或 Edge（仅附件下载步骤需要）、TAPD 个人访问令牌（<a href="https://www.tapd.cn">登录 TAPD</a> → 设置 → 个人设置 → 安全设置 → API 令牌）。
+  <strong>Node.js ≥ 22.13.0</strong>（v0.3.1 起的最低支持线，强制；旧版用 <code>nvm install 22</code> 升级）、本机已装 Chrome 或 Edge（仅附件下载步骤需要）、TAPD 个人访问令牌（<a href="https://www.tapd.cn">登录 TAPD</a> → 设置 → 个人设置 → 安全设置 → API 令牌）。
 </div>
 
 <!-- step 1 -->
@@ -530,7 +531,7 @@ npx -y tapd-server-cli uninstall claude-code --purge</code></pre>
     <tr>
       <td><code>/mcp</code> 显示 <code>tapd ✗ Failed</code></td>
       <td>npx 不在 PATH 或 Node.js 未装</td>
-      <td>装 Node.js ≥ 20；在终端跑 <code>npx -y tapd-server-cli</code> 看 stderr 真错</td>
+      <td>装 Node.js ≥ 22.13.0；在终端跑 <code>npx -y tapd-server-cli</code> 看 stderr 真错</td>
     </tr>
     <tr>
       <td><code>tapd.whoami</code> 返回 <code>unauthenticated</code></td>
@@ -562,6 +563,16 @@ npx -y tapd-server-cli uninstall claude-code --purge</code></pre>
       <td>访问 <code>registry.npmjs.org</code> 受限</td>
       <td>设 npm registry 代理；或直接跑 <code>npm view tapd-server-cli version</code> 手验</td>
     </tr>
+    <tr>
+      <td>跑 <code>npx tapd-server-cli</code> 直接报 <code>✗ Node.js 版本不满足要求</code> + exit 2</td>
+      <td>v0.3.1 起的运行时自检拦下了 Node &lt; 22.13.0 的环境</td>
+      <td><code>nvm install 22 &amp;&amp; nvm use 22</code>（macOS/Linux 用 nvm，Windows 用 nvm-windows）；或访问 <a href="https://nodejs.org/">nodejs.org</a> 下载 LTS 22+</td>
+    </tr>
+    <tr>
+      <td><code>npm warn EBADENGINE Unsupported engine ... mute-stream@4.0.0 ... required: { node: '^22.22.2 || ^24.15.0 || >=26.0.0' }</code></td>
+      <td>传递依赖（PAT 隐藏输入用）声明的 Node 范围比我们 <code>engines.node</code> 严</td>
+      <td><strong>可忽略</strong>——warning 不阻断，实测 22.13 即可正常使用。彻底消除：升到 Node 22.22.2+ 或 24.15+</td>
+    </tr>
   </tbody>
 </table>
 
@@ -578,7 +589,7 @@ npx -y tapd-server-cli uninstall claude-code --purge</code></pre>
 <ol class="checklist">
   <li><a href="#m-publish">npm publish 成功，sigstore provenance 链完整</a></li>
   <li><a href="#m-release">GitHub Release 非 draft，Release notes 来自 CHANGELOG</a></li>
-  <li><a href="#m-smoke">macos-latest / windows-latest / ubuntu-latest × Node 20/22 全 PASS</a></li>
+  <li><a href="#m-smoke">macos-latest / windows-latest / ubuntu-latest × Node 22/24 全 PASS</a></li>
   <li><a href="#m-spec">OpenSpec 干净（active changes 0、archive 完整）</a></li>
   <li><a href="#m-rollback">回滚预案确认</a></li>
 </ol>
@@ -589,25 +600,26 @@ npx -y tapd-server-cli uninstall claude-code --purge</code></pre>
 
 <div class="step">
   <div class="step-title">验证命令</div>
-<pre><code># 版本号实际可拉
-npm view tapd-server-cli@0.3.0 version
-# 期望输出：0.3.0
+<pre><code># 版本号实际可拉（替换 0.3.1 为实际发版号）
+npm view tapd-server-cli@0.3.1 version
+# 期望输出：0.3.1
 
 # tarball 完整性
-npm view tapd-server-cli@0.3.0 dist.tarball dist.shasum dist.integrity
+npm view tapd-server-cli@0.3.1 dist.tarball dist.shasum dist.integrity
 
 # provenance 链（sigstore）
-npm view tapd-server-cli@0.3.0 dist.signatures
+npm view tapd-server-cli@0.3.1 dist.signatures
 # 期望含 keyid 与 sig 字段
 
 # 包内容审计：commands/ 与 dist/commands/ 都在
-npm pack tapd-server-cli@0.3.0
-tar -tzf tapd-server-cli-0.3.0.tgz | grep -E 'commands/|dist/commands/'
+npm pack tapd-server-cli@0.3.1
+tar -tzf tapd-server-cli-0.3.1.tgz | grep -E 'commands/|dist/commands/|node-version-check'
 # 期望含：
 #   package/commands/login.md
 #   package/commands/logout.md
 #   package/commands/update.md
-#   package/dist/commands/{login,logout,update}-handler.{js,d.ts}</code></pre>
+#   package/dist/commands/{login,logout,update}-handler.{js,d.ts}
+#   package/dist/runtime/node-version-check.{js,d.ts}  (v0.3.1+)</code></pre>
 
   <h4>验证点 <span class="badge badge-ok">PASS 标准</span></h4>
   <ul>
@@ -623,14 +635,14 @@ tar -tzf tapd-server-cli-0.3.0.tgz | grep -E 'commands/|dist/commands/'
 <h3 id="m-release" class="anchor-target">GitHub Release</h3>
 
 <div class="step">
-<pre><code>gh release view v0.3.0 --json name,tagName,createdAt,isDraft,body
-# 期望：isDraft=false，body 包含 CHANGELOG [0.3.0] 段</code></pre>
+<pre><code>gh release view v0.3.1 --json name,tagName,createdAt,isDraft,body
+# 期望：isDraft=false，body 包含 CHANGELOG [0.3.1] 段</code></pre>
 
   <h4>验证点 <span class="badge badge-ok">PASS 标准</span></h4>
   <ul>
     <li><code>isDraft: false</code></li>
-    <li>Release body 与 <code>CHANGELOG.md</code> 的 <code>[0.3.0]</code> 段内容一致（来自 <code>scripts/extract-changelog.mjs</code>）</li>
-    <li>Tag <code>v0.3.0</code> 指向正确的 commit（<code>git rev-parse v0.3.0</code> = release CI 跑过的 commit）</li>
+    <li>Release body 与 <code>CHANGELOG.md</code> 的 <code>[0.3.1]</code> 段内容一致（来自 <code>scripts/extract-changelog.mjs</code>）</li>
+    <li>Tag <code>v0.3.1</code> 指向正确的 commit（<code>git rev-parse v0.3.1</code> = release CI 跑过的 commit）</li>
   </ul>
 </div>
 
@@ -641,27 +653,28 @@ tar -tzf tapd-server-cli-0.3.0.tgz | grep -E 'commands/|dist/commands/'
 <div class="step">
   <div class="step-title">CI 矩阵确认</div>
 <pre><code>gh run list --workflow=ci.yml --limit 5 --json databaseId,headSha,conclusion,status
-# 期望：v0.3.0 tag commit 对应的 release run 全 SUCCESS
+# 期望：最新 main 的 CI run 全 SUCCESS
 
 gh run list --workflow=release.yml --limit 1 --json databaseId,conclusion
 # 期望：conclusion=success</code></pre>
 
-  <p>覆盖矩阵（来自 <code>.github/workflows/ci.yml</code>）：</p>
+  <p>覆盖矩阵（来自 <code>.github/workflows/ci.yml</code>，v0.3.1 起）：</p>
   <table>
     <thead>
-      <tr><th>平台</th><th>Node 20</th><th>Node 22</th></tr>
+      <tr><th>平台</th><th>Node 22</th><th>Node 24</th></tr>
     </thead>
     <tbody>
-      <tr><td>ubuntu-latest</td><td>typecheck + test + build</td><td>同左</td></tr>
+      <tr><td>ubuntu-latest</td><td>npm ci (3-retry) + typecheck + test + build</td><td>同左</td></tr>
       <tr><td>windows-latest</td><td>同左（跑 npm.cmd / claude.cmd PATHEXT 路径）</td><td>同左</td></tr>
       <tr><td>macos-latest</td><td>同左</td><td>同左</td></tr>
     </tbody>
   </table>
+  <p><strong>v0.3.1 起 Node 20 矩阵被砍</strong>——package.json <code>engines.node</code> 提到 22.13+，运行时自检会 exit 2 拒绝 20.x 跑测试。<code>npm ci</code> 用 <code>nick-fields/retry@v3</code> 包住，3 次重试间隔 15s，抗 GitHub Actions 镜像源偶发 ETIMEDOUT。</p>
 
   <div class="step-title" style="margin-top: 16px;">本地手动 smoke（GFW 网络下网络步骤可能失败但能验代码路径）</div>
 <pre><code># 1. 全套测试
 npm ci && npm run typecheck && npm test && npm run build
-# 期望：333/333 PASS（v0.3.0 + 后续 README/backport commit 后；如有新加测试则数字递增）
+# 期望：344/344 PASS（v0.3.1 含 Node 版本自检 11 个新用例；后续如再加测试数字递增）
 
 # 2. dist 子命令烟测
 node dist/index.js --help
@@ -670,7 +683,11 @@ node dist/index.js --help
 node dist/index.js update --json
 # 期望：JSON 含 current/latest/comparison 字段；网络失败时仍 exit 0
 
-# 3. 全局安装 + 卸载循环（隔离 HOME）
+# 3. Node 版本自检烟测（v0.3.1+）
+node --input-type=module -e "import('./dist/runtime/node-version-check.js').then(m => m.assertNodeVersion({versionOverride:'v20.0.0', stderr:process.stderr, exit:c=>{console.log('would exit',c); return 'exited';}}))"
+# 期望：stderr 中文提示 + would exit 2
+
+# 4. 全局安装 + 卸载循环（隔离 HOME）
 HOME=/tmp/fake-home node dist/index.js install claude-code --dry-run
 # 期望：dry-run 不写文件、打印将写内容、exit 0</code></pre>
 </div>
@@ -733,7 +750,7 @@ npx -y tapd-server-cli@latest install claude-code
 <hr class="section-sep">
 
 <div class="meta-bar">
-  <p><strong>本文档生成时间：</strong>2026-05-29 ｜ <strong>对应代码版本：</strong>main @ <code>7ac749e</code>（v0.3.0 + README v0.3.0 对齐 + claude-cli backport）｜ <strong>反馈渠道：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/issues">GitHub Issues</a></p>
+  <p><strong>本文档生成时间：</strong>2026-05-30 ｜ <strong>对应代码版本：</strong>main @ <code>6886b0a</code>（v0.3.1：Node 22.13+ 自检 + CI 矩阵 22/24 + npm ci retry）｜ <strong>反馈渠道：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/issues">GitHub Issues</a></p>
 </div>
 
 </main>
