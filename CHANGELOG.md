@@ -14,9 +14,23 @@
 
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
+
+## [0.3.3] - 2026-05-30
+
+修复 v0.2.0 多子命令重构后埋下的致命回归:作为 MCP stdio server 裸跑时进程秒退,所有 v0.2.0 ~ v0.3.2 用户首次连接 MCP 客户端都会失败。
+
+### Added
+
+- **`test/unit/cli-server-mode.test.ts` 7 个回归测试**:覆盖 `parseCli([])` / `parseCli(['--token', ...])` / `parseCli(['--api-base', ...])` / `parseCli(['--http-port', ...])` 等 server 模式入口,并校验 install/login 子命令仍正常路由。防止后续重构再次让 default action 被误删导致同款回归。
+
 ### Changed
 
-- **`release.yml` 的 `npm ci` 加 3 次 retry**（`nick-fields/retry@v3`，间隔 15s）：与 `ci.yml` 对齐。v0.3.2 release CI 第 1 次跑就命中 `mirrors.tencent.com` 拉 `signal-exit-4.1.0.tgz` ETIMEDOUT，靠 `gh run rerun --failed` 救回来。v0.3.1 给 `ci.yml` 加过同款 retry 但漏了 `release.yml`——本次补齐，让发版路径同样抗 transient flake，不再依赖人工 rerun。
+- **`release.yml` 的 `npm ci` 加 3 次 retry**(`nick-fields/retry@v3`,间隔 15s):与 `ci.yml` 对齐。v0.3.2 release CI 第 1 次跑就命中 `mirrors.tencent.com` 拉 `signal-exit-4.1.0.tgz` ETIMEDOUT,靠 `gh run rerun --failed` 救回来。v0.3.1 给 `ci.yml` 加过同款 retry 但漏了 `release.yml`——本次补齐,让发版路径同样抗 transient flake,不再依赖人工 rerun。
+
+### Fixed
+
+- **`parseCli` 无参/无子命令时落入 `mode: 'server'`,不再被 commander 的 help 路径吃掉**:根因是 `src/cli.ts` 给 root command 配了 `.exitOverride()` 但没注册 default action。commander@12 在多子命令 + exitOverride + 无 default action 的组合下,`parse([])` 会调用 `outputHelp()` 然后抛 `commander.helpDisplayed`,`src/index.ts` 顶层 catch 把这个识别为"用户主动看了 help",调 `process.exit(0)`。后果:`tapd-server-cli` 裸跑作为 MCP stdio server 启动时进程秒退,MCP 客户端只看到 stdio 关闭,无法完成 initialize 握手,Claude Code 报 `Failed to reconnect to tapd: -32000`。**受影响版本范围:v0.2.0 ~ v0.3.2 全部**。修复方式:给 root command 在 `.exitOverride()` 后追加 `.action(() => {})` 默认 noop action,commander 匹配空 argv 时调到这个 action 而不是走 help 路径,parseCli 末尾的 fallthrough 顺利落到 `mode: 'server'`。
+- **`PACKAGE_VERSION` 由硬编码的 `'0.1.0'` 同步到当前发布版**:历史遗留——0.2.x/0.3.x 多次发布都没同步这个常量,导致 `tapd-server-cli --version` 输出 `0.1.0` 而非真实版本。本次对齐到 `0.3.3`。
 
 
 ## [0.3.2] - 2026-05-30

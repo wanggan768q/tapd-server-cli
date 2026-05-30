@@ -21,7 +21,7 @@ export type ParsedCli =
 
 const SUPPORTED_CLIENTS = ['claude-code', 'codex', 'opencode', 'cursor'] as const;
 
-const PACKAGE_VERSION = '0.1.0';
+const PACKAGE_VERSION = '0.3.3';
 
 /**
  * `install` 子命令解析阶段抛出的、对外可识别的错误。
@@ -69,7 +69,14 @@ export function parseCli(argv: readonly string[]): ParsedCli {
       return n;
     })
     .allowExcessArguments(false)
-    .exitOverride();
+    .exitOverride()
+    // Default action: 无子命令时回落到 server 模式，避免 commander 输出 help 后通过
+    // exitOverride 抛 `commander.helpDisplayed` 提前结束进程。
+    // 没有这一行的话，`tapd-server-cli`（裸跑，作为 MCP stdio server 启动）会在
+    // commander.parse() 阶段秒退，MCP 客户端只看到 stdio 关闭，无法完成 initialize 握手。
+    .action(() => {
+      /* fall through to server mode (handled in parseCli return path) */
+    });
 
   let installResult: { clients: string[]; dryRun: boolean } | undefined;
   let uninstallResult: { clients: string[]; dryRun: boolean; purge: boolean } | undefined;
