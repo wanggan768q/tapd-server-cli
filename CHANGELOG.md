@@ -14,6 +14,20 @@
 
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
+### Added
+
+- **Node.js 版本运行时自检**（`src/runtime/node-version-check.ts`）：`main()` 入口第一道闸门，所有子命令（install / uninstall / login / logout / update / server）执行前检查 `process.version`。低于阈值时写中文提示到 stderr 并 `exit(2)`，不再让用户跑到 inquirer / undici / commander 崩溃才知道环境不对。提示含修复建议（`nvm install 22 && nvm use 22`）。
+
+### Changed
+
+- **`engines.node` 从 `>=20` 提升到 `>=22.13.0`**：与实际依赖现实对齐——`commander@12` / `undici@7` 都要求 22+，`@inquirer/checkbox@5` 实测下限 20.17 但被前两者收紧到 22.13。Node 20 用户在 `npx -y tapd-server-cli` 时会看到 `EBADENGINE` warning（不阻断），随后被运行时自检拒绝，提示明确升级路径。表里如一，避免文档承诺与依赖现实漂移。
+
+### Notes
+
+- **下游影响**：仍在 Node 20 的用户需升级到 LTS 22（22.13.0+ 即可，推荐 22.x 最新 LTS）。Node 18 用户必须升级——v0.2.x 已不再获得新功能。Windows 用户用 `nvm-windows`，macOS/Linux 用 `nvm`。
+- **mute-stream@4 EBADENGINE warning**：`@inquirer/core@11.2.0` 的传递依赖 `mute-stream@4` 要求 Node `^22.22.2 || ^24.15.0 || >=26.0.0`，比我们的 `engines.node` 还严。Node `[22.13, 22.22)` 与 `[24.0, 24.15)` 区间用户仍会看到该 warning，但**实测不影响功能**（PAT 输入隐藏、配置写入、server 启动均正常）。如想彻底消除：用 LTS 22.22.2+ 或 24.15+。
+
+
 ## [0.3.0] - 2026-05-29
 
 撤回 Claude Code plugin 体系的 minor 版本（破坏性，但 0.x 允许）。改走 npm + user-scope commands + CLI 子命令的双路径方案，安装与维护更可靠。

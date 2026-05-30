@@ -427,6 +427,8 @@ tapd.attachments.download
 | `tapd.login` 返回 `invalid_argument`（提示"仅支持 stdio"） | server 启用了 HTTP 传输 | 改用 stdio 启动（不设置 `TAPD_MCP_HTTP_PORT`），或手动配 `TAPD_WEB_COOKIE` env |
 | `/mcp` 看不到 `tapd`（Claude Code） | 配置文件位置错或 Claude Code 未重启 | 检查 `~/.claude.json`（**不是** `~/.claude/settings.json`）；完全退出 Claude Code 进程后重启；或在新会话跑 `claude mcp list` 确认 |
 | 已通过 `npx install claude-code` 装过、又装 plugin 但 `/mcp` 仍只看到一份 `tapd` | 已无关：v0.3.0 起不再以 plugin 形式分发 | 仅 `npx -y tapd-server-cli install claude-code` 即可（同时安装 user-scope slash 命令） |
+| `npx -y tapd-server-cli install` 报 `✗ Node.js 版本不满足要求` | 当前 Node 低于 22.13.0（v0.3.x 起的最低支持线） | `nvm install 22 && nvm use 22`（macOS/Linux 用 nvm，Windows 用 nvm-windows）；或访问 <https://nodejs.org/> 下载 LTS。npm install 阶段先看到 EBADENGINE warning 不阻断，运行时再次拒绝并 exit 2 |
+| `npm warn EBADENGINE Unsupported engine ... mute-stream@4.0.0 ... required: { node: '^22.22.2 \|\| ^24.15.0 \|\| >=26.0.0' }` | 传递依赖（PAT 隐藏输入用）声明的 Node 范围比我们 `engines.node` 严 | **可忽略**——warning 不阻断，实测 22.13 即可正常使用。彻底消除：升级到 Node 22.22.2+ 或 24.15+ |
 
 ## 开发
 

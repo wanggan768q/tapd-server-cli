@@ -27,6 +27,7 @@ import {
 } from './installer/select-clients.js';
 import { runUninstall, UNINSTALL_ADAPTERS } from './installer/uninstall-flow.js';
 import { createLogger } from './runtime/logger.js';
+import { assertNodeVersion } from './runtime/node-version-check.js';
 import { buildServer } from './runtime/server.js';
 import { bindHttp, bindStdio } from './runtime/transports.js';
 
@@ -34,6 +35,10 @@ const STARTED_AT = Date.now();
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 
 async function main() {
+  // 第一道闸门：Node 版本不满足直接 exit 2 + 友好提示，
+  // 不再让用户跑到 inquirer/undici/commander 崩溃才知道。
+  assertNodeVersion();
+
   const parsed = parseCli(process.argv.slice(2));
 
   if (parsed.mode === 'install') {
