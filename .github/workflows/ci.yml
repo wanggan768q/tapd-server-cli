@@ -13,7 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: [20, 22]
+        # v0.3.x 起最低支持 Node 22.13（与 package.json.engines.node 一致）。
+        # 同时跑 24 验证当前 Stable 行为（用户社区主流环境）。
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
