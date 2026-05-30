@@ -16,7 +16,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # v0.3.1 起最低支持 Node 22.13（与 package.json.engines.node + ci.yml 矩阵齐平）。
+          # release CI 自身也跑 npm test, 跑在 Node 20 会被运行时自检 exit 2 拒绝。
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
 
       - name: Verify tag matches package.json version
