@@ -22,6 +22,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
+import { Socket } from 'node:net';
 import { readFileSync, existsSync, writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createInterface } from 'node:readline';
@@ -229,10 +230,80 @@ function checkTag(version) {
   return { tagName, localExists, remoteExists: !!remoteSha };
 }
 
-function runPipeline() {
+/**
+ * 探测可用代理。
+ * 优先级：HTTPS_PROXY env > HTTP_PROXY env > 本地 127.0.0.1:7890（Clash/V2Ray 默认）
+ * 返回 undefined 表示无代理，按裸网络跑（适合 CI / 海外用户）。
+ *
+ * 本地代理探测仅看端口监听（TCP connect 200ms 超时），不实际请求 registry，
+ * 避免误判（DNS / 证书问题不属于代理可达性）。
+ */
+function detectProxy() {
+  const envProxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  if (envProxy) return envProxy;
+  // 本地默认端口探测 — 同步快速 (300ms 超时由 Socket 控制)
+  return new Promise((resolve) => {
+    const s = new Socket();
+    let done = false;
+    const cleanup = (v) => {
+      if (done) return;
+      done = true;
+      try {
+        s.destroy();
+      } catch {
+        /* ignore */
+      }
+      resolve(v);
+    };
+    s.setTimeout(300);
+    s.once('connect', () => cleanup('http://127.0.0.1:7890'));
+    s.once('error', () => cleanup(undefined));
+    s.once('timeout', () => cleanup(undefined));
+    s.connect(7890, '127.0.0.1');
+  });
+}
+
+/**
+ * 跑 npm ci，遇到 ECONNRESET / ETIMEDOUT / network 类错误自动重试，
+ * 最多 3 次。每次失败间隔 15s。
+ *
+ * 探测到代理时把代理注入子进程 env（不污染当前 process），且给 npm 加
+ * --maxsockets=3 降低并发抖动（默认 15，国内网络条件下偶发雪崩）。
+ */
+async function runNpmCiWithRetry(proxy) {
+  const baseEnv = proxy
+    ? { HTTPS_PROXY: proxy, HTTP_PROXY: proxy, npm_config_https_proxy: proxy, npm_config_http_proxy: proxy }
+    : {};
+  const args = ['ci', '--maxsockets=3'];
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      info(
+        `npm ci (attempt ${attempt}/${maxAttempts}${proxy ? `, proxy: ${proxy}` : ', no proxy'})`,
+      );
+      run('npm', args, { env: baseEnv });
+      return;
+    } catch (e) {
+      const msg = (e.message || '').toLowerCase();
+      const networkError =
+        msg.includes('econnreset') ||
+        msg.includes('etimedout') ||
+        msg.includes('network aborted') ||
+        msg.includes('socket hang up') ||
+        msg.includes('econnrefused');
+      if (attempt === maxAttempts || !networkError) {
+        throw e;
+      }
+      warn(`npm ci 失败（${attempt}/${maxAttempts}），15s 后重试。错误：${e.message.split('\n')[0]}`);
+      await new Promise((r) => setTimeout(r, 15_000));
+    }
+  }
+}
+
+async function runPipeline() {
   step('5/7 构建与测试');
-  info('npm ci');
-  run('npm', ['ci']);
+  const proxy = await detectProxy();
+  await runNpmCiWithRetry(proxy);
   info('npm run typecheck');
   run('npm', ['run', 'typecheck']);
   info('npm test');
@@ -352,7 +423,7 @@ async function main() {
   checkRemoteSync();
   const changelogSection = checkChangelog(version);
   const { tagName, localExists, remoteExists } = checkTag(version);
-  runPipeline();
+  await runPipeline();
   checkNpmLogin();
 
   if (!DRY_RUN) {
