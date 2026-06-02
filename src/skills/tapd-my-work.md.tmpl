@@ -1,0 +1,97 @@
+---
+name: tapd-my-work
+description: |
+  Use when the user asks about their own assigned TAPD items — needs,
+  bugs, tasks, "what's on my plate this iteration". Default the filter
+  to `current_owner = $ME` unless the user explicitly names someone else.
+  Show in-progress items first, then other not-completed items, hide
+  closed/resolved/completed by default.
+
+  English triggers: my work, my bugs, my stories, my tasks, assigned to me,
+  what's on my plate, current iteration mine, my tapd, what should I do.
+
+  中文触发：我的需求、我的 bug、我的任务、分给我的、我手头上的、
+  我这边的、本期我要做、我负责的、我手头有什么、看下我的、我的工作。
+---
+
+# TAPD: My Work
+
+Default lookup for "what's mine to work on right now". Reads
+`~/.tapd/cache.json` for `$ME` identity and the workspace list.
+
+## Default behaviour
+
+When the user says "看看我的需求 / 我的 bug" or similar without naming a
+person:
+
+1. Resolve `$ME` from `cache.json:identity.tapdUserName` —
+   currently **{{identity.tapdUserName}}**.
+2. Resolve workspace per `tapd-overview` rules (single → use; multi → ask
+   or use `lastSelectedWorkspace`).
+3. Query stories + bugs (NOT tasks by default) with:
+   - `current_owner` filter: `$ME`
+   - `status` filter: exclude completed states (see below)
+4. Sort the result: in-progress states first, others after.
+
+## Status filter — exclude completed by default
+
+Completed states (excluded by default):
+
+- `resolved` / `已解决`
+- `closed` / `已关闭`
+- `completed` / `已完成`
+- `cancelled` / `已取消`
+- `rejected` / `已拒绝`
+
+Project-specific labels can vary. If a workspace uses Chinese labels,
+exclude the Chinese variants too. When in doubt, call `tapd_workflows_list`
+first to enumerate the workspace's actual statuses.
+
+If the user asks for "包括已完成的" / "全部" / "all including done", drop
+the status filter.
+
+## Sort: in-progress first
+
+Within the result, put items whose status matches one of these on top:
+
+- `in_progress` / `处理中`
+- `developing` / `开发中`
+- `progressing`
+
+Then everything else (planning / new / paused / etc.) below.
+
+When showing the result, use a markdown table:
+
+| ID | Type | Title | Status | Iteration | Updated |
+|---|---|---|---|---|---|
+| #1234 | story | 实现登录页 | developing | 2026Q2-S1 | 2026-05-29 |
+
+## Override paths
+
+| User says | Filter applied |
+|---|---|
+| "查我的需求" | `current_owner = $ME`, type = stories |
+| "查张三的需求" | `current_owner = 张三`, type = stories |
+| "本期所有人的 bug" | NO `current_owner` filter, scoped to current iteration |
+| "包括我已完成的" | `current_owner = $ME`, NO status filter |
+| "@me 任务" | also include tasks (`tapd_tasks_list`) |
+
+## What this skill does NOT do
+
+- It does not modify anything (read-only).
+- It does not auto-include tasks by default — many teams don't use them
+  consistently. Ask if the user wants tasks included.
+- It does not log timesheets — see `tapd-log-time`.
+- For implementing a specific item, hand off to `tapd-implement-story`.
+- For bug analysis, hand off to `tapd-handle-bug`.
+
+## Tools used
+
+- `tapd_stories_list` — filter `current_owner`, optional `status`,
+  optional `iteration_id`
+- `tapd_bugs_list` — filter `current_owner`, optional `status`
+- `tapd_tasks_list` (only when user explicitly asks for tasks)
+- `tapd_workflows_list` — optional pre-flight to enumerate status enums
+
+Pagination: keep `limit=50` initially; if more, ask "还想看更多吗？"
+before paging through.

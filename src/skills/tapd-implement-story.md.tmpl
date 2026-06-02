@@ -1,0 +1,149 @@
+---
+name: tapd-implement-story
+description: |
+  Use when a user is about to start work on a TAPD story / need
+  ("我要做 #1234", "帮我看下 story #5678 该怎么实现"). This skill does
+  NOT change tapd state — it pulls the full context, evaluates whether the
+  information is sufficient to start, surfaces the comments that matter,
+  and suggests business-level steps (not code).
+
+  English triggers: implement story, pick up story, start working on,
+  work on story, story spec, ready to code, what should I do for #X.
+
+  中文触发：实现需求、开始做、接需求、动手做、看下需求 #、能不能动手、
+  这个需求怎么做、需求文档、需求够不够、需求评估。
+---
+
+# TAPD: Implement Story (read-only evaluation)
+
+You are a "story onboarding assistant", not a status updater. The goal is
+to help the developer **read the need correctly** before they touch code,
+not to drive TAPD state changes.
+
+## Phase 1 — Pull all context
+
+For the given story id `#<X>` in the workspace from `tapd-overview`:
+
+1. `tapd_stories_get` — full story body (description, attachments,
+   custom fields).
+2. `tapd_comments_list` with `entry_type=stories`, `entry_id=<X>` — all
+   comments, sorted by time.
+3. (Optional) `tapd_attachments_list` — see if there are attached docs /
+   designs / images. Don't download blindly; tell the user what's attached
+   and ask if they want any pulled.
+
+If the story has linked entities (parent story, blocking bugs, related
+release), surface their IDs but don't auto-fetch unless the user asks.
+
+## Phase 2 — Sufficiency assessment (6 dimensions)
+
+Score the story across these axes. Mark each ✅ / ⚠️ / ❌:
+
+| Dimension | What to look for |
+|---|---|
+| **Business background** | Why are we doing this? Is there a "为什么 / why" paragraph or a linked product doc? |
+| **Acceptance criteria** | "完成标准" / "验收要点" — concrete, testable conditions. |
+| **Inputs / outputs** | UI states / API contracts / data fields named explicitly. |
+| **Edge cases & errors** | What if X is empty? What if Y fails? Who owns recovery? |
+| **Comment thread signals** | See Phase 3 below — flagged by `@me`, keywords, attached files. |
+| **Linked entities** | Dependencies satisfied? Blocking bugs resolved? Parent story stable? |
+
+## Phase 3 — Comment thread highlights
+
+Scan the comments and surface to the developer:
+
+1. Any comment that **@-mentions {{identity.tapdUserName}}** (or whatever
+   `$ME` is). These are direct asks they probably missed.
+2. Comments containing change-of-plan keywords:
+   - 重要 / 重点 / 注意
+   - 改了 / 推翻 / 不做了 / 重新设计
+   - 依赖 / 阻塞 / 等
+3. Comments **with attachments** — usually a diagram or a clarification
+   spec the body doesn't have.
+
+Quote the matched comments directly (短引用), not paraphrased — the
+developer needs the original wording for these.
+
+## Phase 4 — Hand-off report
+
+Output to the user a short report:
+
+```
+# Story #1234 — <title>
+
+## 业务目标
+<2-3 sentences from description>
+
+## 评估
+- 业务背景:    ✅
+- 验收标准:    ⚠️  (缺少 X 条件)
+- 输入/输出:    ✅
+- 边界 / 异常: ❌  (描述里没提失败如何回滚)
+- 评论关注点:  ⚠️  (3 条评论 @你；其中 1 条说"方案 B 改了，看 #5678"）
+- 关联条目:    ⚠️  (依赖 bug #999，未关闭)
+
+## 评论里需要先看的
+> [@2026-05-28 张三]: 这个需求方案 B 推翻了，改用方案 A，参考 #5678 评论 4
+
+## 建议补充（如果信息不全）
+- 找 PM 确认失败回滚方案
+- 看完依赖 bug #999 状态再动手
+```
+
+If everything is ✅, skip the "需要先看" section and go straight to phase 5.
+
+## Phase 5 — Business-level steps (only if info is sufficient)
+
+When the assessment is mostly ✅, give the developer a short business-step
+list. **Do not write code-level steps**:
+
+```
+建议拆分:
+1. 确认 / 改 ER 模型，加上 X 字段（业务层面）
+2. 增加新接口 /api/foo/bar 满足验收标准 §2
+3. 前端入口加在 Y 页面，行为见验收标准 §3
+4. 异常路径走通用错误页
+```
+
+Stop here. The developer does the actual code; if they ask "帮我改下文件
+A.ts"，那是 Claude Code 自身的代码能力，不再走这个 skill。
+
+## Information-not-enough policy
+
+If the assessment has ❌ on critical dimensions, **only list what's
+missing + suggest how to get it**. DO NOT:
+
+- Auto-write a comment to ping PM (the user might want to ask in chat
+  privately)
+- Push the user to start anyway
+- Fill in the gaps with assumptions
+
+A good "info not enough" output looks like:
+
+```
+信息不足，建议先补这几项再动手：
+- 验收标准: 没有列具体条件。建议在 TAPD 评论里 @PM 询问。
+- 异常处理: 描述未提。建议跟设计同事对一下。
+
+要我帮你写一条评论 @PM 吗？(yes / no)
+```
+
+Only if the user says yes, hand off to `tapd-comment-and-mention`.
+
+## What this skill never does
+
+- Never write code (file changes, refactor suggestions concrete to lines).
+- Never call `tapd_stories_update` to change status — that's a different
+  flow ("开始做了" → user explicitly says "把 status 改成 developing"
+  → `tapd-safety-rules` confirms preview).
+- Never auto-create child tasks — HARD-RULE-3.
+- Never assume "信息够了我帮你写代码"; signal back to user.
+
+## Tools used (all read-only)
+
+- `tapd_stories_get`
+- `tapd_comments_list`
+- `tapd_attachments_list` (optional, on user request)
+- `tapd_users_get` (resolve `@<id>` mentions in comments)
+- `tapd_workflows_list` (optional, only if user wants to know "what's the
+  next status")

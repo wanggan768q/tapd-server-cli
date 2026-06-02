@@ -22,8 +22,19 @@ export default [
         clearTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
+        setImmediate: 'readonly',
         URL: 'readonly',
         AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
+        fetch: 'readonly',
+        require: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        // TypeScript-specific: NodeJS namespace types are valid in .ts but
+        // ESLint's no-undef can't see TS namespace declarations.
+        NodeJS: 'readonly',
       },
     },
     plugins: {

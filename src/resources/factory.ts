@@ -24,6 +24,7 @@ import {
   type ResourceActionSpec,
   type ResourceDef,
 } from './definitions.js';
+import { maybeRecordKnownUsers } from './known-users-hook.js';
 
 export interface ResourceToolDeps {
   client: TapdHttpClient;
@@ -153,8 +154,11 @@ export async function executeResourceTool(
     }
 
     if (parsed.fields && parsed.fields.length > 0) {
-      return projectFields(raw, parsed.fields);
+      const projected = projectFields(raw, parsed.fields);
+      maybeRecordKnownUsers(def, spec, projected);
+      return projected;
     }
+    maybeRecordKnownUsers(def, spec, raw);
     return raw;
   } catch (err) {
     if (err instanceof TapdApiError && isWrite && err.kind === 'permission_denied' && workspaceId) {

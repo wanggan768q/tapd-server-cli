@@ -1,0 +1,127 @@
+---
+name: tapd-fields-reference
+description: |
+  Use BEFORE any TAPD write operation (create / update), or when the user
+  asks about TAPD field names, status enums, required fields, or which
+  field a value should go into. This skill is the canonical field map —
+  consult it instead of guessing. Each project may also have custom fields;
+  call `tapd_custom-fields_list` to discover them.
+
+  English triggers: tapd field, tapd status, tapd enum, required field,
+  what fields, custom field, current_owner, iteration_id, severity.
+
+  中文触发：tapd 字段、状态值、必填、有哪些字段、自定义字段、状态机、
+  状态枚举、bug 严重程度、负责人、迭代 id。
+---
+
+# TAPD Field Reference
+
+The field schema below is what the **MCP tools accept as `data`**. TAPD's
+underlying schema may differ — when in doubt, call the corresponding `_list`
+tool with `limit=1` to see real values from the user's workspace. Status
+enums in particular vary per project; **always call `tapd_workflows_list`**
+when changing a status to confirm the literal value.
+
+> Workspace IDs are required on almost every call. Read `~/.tapd/cache.json`
+> for the user's accessible workspaces (loaded via `tapd-overview`).
+
+## Story (需求)
+
+| field | required | type | notes |
+|---|---|---|---|
+| `workspace_id` | ✓ | string | from `cache.json` |
+| `name` | ✓ | string | 标题 |
+| `description` |   | string (HTML) | 描述，支持富文本 |
+| `status` |   | enum | per-workspace via `tapd_workflows_list`; common: `planning`, `developing`, `testing`, `resolved` |
+| `current_owner` |   | string | TAPD username (NOT id). Multiple users joined by `;` |
+| `iteration_id` |   | string | 迭代 id |
+| `effort` |   | number | 预估工时（小时） |
+| `remain` |   | number | 剩余工时（小时） |
+| `progress` |   | number | 0–100 |
+| `priority` |   | enum | `1`–`4` (1=最高) |
+
+## Bug (缺陷)
+
+| field | required | type | notes |
+|---|---|---|---|
+| `workspace_id` | ✓ | string |  |
+| `title` | ✓ | string |  |
+| `description` |   | HTML | 描述，可含复现步骤 |
+| `status` |   | enum | typical: `new`, `in_progress`, `resolved`, `closed`. **Normal users MUST NOT set `closed`** — see `tapd-safety-rules` HARD-RULE-2 |
+| `severity` |   | enum | `fatal` / `serious` / `normal` / `prompt` / `advice` |
+| `priority` |   | enum | `urgent` / `high` / `medium` / `low` |
+| `reporter` |   | string | 通常自动填 |
+| `current_owner` |   | string | 处理人，TAPD username |
+| `iteration_id` |   | string |  |
+| `module` |   | string | 模块名 |
+| `resolution` |   | enum | `fixed` / `wontfix` / `duplicated` / etc. — set when status=resolved |
+
+## Task (任务)
+
+> ⚠️ **Normal users MUST NOT call `tapd_tasks_create`** (HARD-RULE-3). Update
+> their own assigned tasks is fine.
+
+| field | required | type | notes |
+|---|---|---|---|
+| `workspace_id` | ✓ | string |  |
+| `name` | ✓ | string |  |
+| `status` |   | enum | `open`, `progressing`, `done` (project-dependent) |
+| `owner` |   | string | TAPD username |
+| `effort` |   | number | hours |
+| `progress` |   | number | 0–100 |
+| `story_id` / `bug_id` |   | string | parent entity if any |
+
+## Timesheet (工时)
+
+| field | required | type | notes |
+|---|---|---|---|
+| `workspace_id` | ✓ | string |  |
+| `owner` | ✓ | string | default `$ME` from cache |
+| `timespent` | ✓ | number | **hours** (e.g. `2.5`) |
+| `spentdate` | ✓ | string | `YYYY-MM-DD` |
+| `story_id` / `bug_id` / `task_id` | ✓ (one of) | string | the entity worked on |
+| `memo` |   | string | 备注 |
+
+## Comment (评论)
+
+| field | required | type | notes |
+|---|---|---|---|
+| `workspace_id` | ✓ | string |  |
+| `entry_type` | ✓ | enum | `stories` / `bugs` / `tasks` |
+| `entry_id` | ✓ | string | TAPD entity id |
+| `description` | ✓ | string (HTML) | 富文本评论体 |
+| `author` |   | string | default `$ME` |
+
+### @-mention syntax (TAPD-specific)
+
+Use `[~user_name]` (the literal characters) where `user_name` is the **TAPD
+username** — e.g. `[~zhangsan]`. NOT `@zhangsan`, NOT `@id:1000`.
+
+Look up the username via `cache.json:knownUsers` first; if not present, call
+`tapd_users_list` once and let the comment skill cache the result back.
+
+## Project-specific values: always probe
+
+These fields have **project-specific enums** that you cannot hardcode:
+
+- `status` (every entity) — call `tapd_workflows_list` first
+- `module` (bugs) — call `tapd_modules_list`
+- `category_id` (stories) — call `tapd_categories_list`
+- Custom fields — call `tapd_custom-fields_list`
+
+Never guess an enum literal. If the user asks for "把状态改成已解决", look up
+the actual `resolved` (or `已解决`) string the workspace uses, and confirm in
+the preview block before writing.
+
+## Pagination & batching
+
+- All `_list` tools accept `limit` (default 30, max 200) and `page` (1-indexed).
+- For full-set fetches, paginate until the page returns < `limit` rows.
+- Bulk write operations are capped at 10 per confirmation —
+  see `tapd-safety-rules` HARD-RULE-5.
+
+## Time format
+
+- `spentdate`, `due`, `begin` → `YYYY-MM-DD` (string)
+- `created`, `modified` → `YYYY-MM-DD HH:MM:SS`
+- Timezone is the workspace's local tz (typically Asia/Shanghai for TAPD)

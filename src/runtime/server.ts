@@ -20,6 +20,7 @@ import { registerResourceTools, type ResourceToolHandle } from '../tools/registe
 import { registerSetupPrompt } from '../prompts/setup.js';
 
 import { maskToken } from '../auth/mask.js';
+import { scheduleCacheBootstrap } from './cache-bootstrap.js';
 import { readPackageVersion } from './package-version.js';
 
 export interface ServerBundle {
@@ -178,6 +179,14 @@ export async function buildServer(config: AppConfig, logger: Logger): Promise<Se
     },
     `registered ${resourceTools.length} resource tools + ${attachmentRegistry.currentTools().length} attachment tools + login/logout + 4 meta tools + setup prompt`,
   );
+
+  // Step 7：异步写 ~/.tapd/cache.json（identity + workspaces）
+  // fire-and-forget：不阻塞 transport 绑定与首个请求；失败仅 warn 日志。
+  scheduleCacheBootstrap({
+    identity,
+    workspaces,
+    logger,
+  });
 
   return {
     mcp,

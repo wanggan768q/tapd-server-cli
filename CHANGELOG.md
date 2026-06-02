@@ -15,6 +15,45 @@
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
 
+## [0.4.0] - 2026-06-02
+
+新增 **MCP Skills 体系**：把"什么时候该用哪个 TAPD 工具、字段语义、行为护栏"从模型上下文里搬到独立可发布的 skill 包，跨 Claude Code / Codex / Cursor / OpenCode 一键铺设。本版本是 minor bump（新增子命令 + 新 capability `mcp-skills`），不破坏既有 MCP server 行为；老用户升级后 MCP 工具调用全部兼容，skill 包通过新子命令 `install-skills` 显式安装，按需启用。
+
+### Added
+
+- **新 CLI 子命令 `install-skills` / `uninstall-skills`**：与现有 `install` / `uninstall` 独立，不写 `mcpServers.tapd`。`install-skills` 支持 `[clients...]` + `--scope user|project` + `--dry-run`；`uninstall-skills` 额外支持 `--purge-cache`。零参 + TTY 进交互式 checkbox；非 TTY 退出码 2 报错。详见 README §"安装 Skills"。
+- **新 CLI 子命令 `switch-role`（占位）**：管理者 skill 尚未交付，当前调用直接退出码 2 + stderr 提示。
+- **10 个 MCP Skill**（4 共享 + 6 普通用户），随 npm 包发布到 `dist/skills/`：`tapd-overview` / `tapd-fields-reference` / `tapd-troubleshoot` / `tapd-safety-rules` / `tapd-my-work` / `tapd-implement-story` / `tapd-handle-bug` / `tapd-log-time` / `tapd-comment-and-mention` / `tapd-from-git-commit`。description 双语（英文 + 中文），正文英文，由 `install-skills` 时按 `~/.tapd/cache.json` 渲染身份/workspace 后落盘。
+- **行为硬规则（`tapd-safety-rules` skill）**：5 条不可被项目 / 用户请求覆盖的硬规则——禁全员删除任何 TAPD 条目；禁全员把 bug 改 `closed`（仅到 `resolved`）；普通用户禁创建 task；写操作 preview 网关（评论免确认，其它必须 `yes`）；批量上限 10 条。
+- **`~/.tapd/` 配置 + 缓存目录**：`tapd.config.json`（CLI 安装期写）+ `cache.json`（MCP server 启动期写，含 `identity` / `workspaces` / 可选 `lastSelectedWorkspace` / `knownUsers`）。
+- **MCP server 启动期异步写 `~/.tapd/cache.json`**：在 transport 绑定后 `setImmediate` 触发，不阻塞首个请求，写入失败仅 warn。
+- **`src/runtime/paths.ts` / `config-store.ts` / `cache-store.ts`**：路径常量、原子写、schemaVersion guard、`appendKnownUser` / `setLastSelectedWorkspace` 增量回写工具。
+- **`src/installer/agents-md.ts`**：`injectManagedBlock` / `removeManagedBlock` / `hasManagedBlock` 三个 API，处理 `<!-- BEGIN tapd-server-cli skills (auto-managed) -->` / `<!-- END ... -->` 标记块。块外原内容 / CRLF / BOM 全部保留；块外检测到 TAPD 提及时一次性 warn。
+- **`src/installer/cursor-mdc.ts`**：Cursor `.cursor/rules/tapd.mdc` 全文写（frontmatter `alwaysApply: false` + 双语 description）。
+- **`src/skills/render.ts`**：模板渲染器，支持 `{{identity.tapdUserName}}` / `{{identity.tapdUserId}}` / `{{workspaces}}` / `{{role}}` / `{{installedAt}}` / `{{defaultWorkspaceId}}` 占位符。缺失字段保留原文 + 通过注入 logger 输出 warn，不抛错。
+- **`scripts/copy-skills.mjs`**：build 链新增的拷贝步骤——`tsc` 不会拷 `.md.tmpl`，本脚本把 `src/skills/*.md.tmpl` 同步到 `dist/skills/`。`npm run build` 串联调用。
+- **新增 ~70 vitest 单测**：`skills-render.test.ts`、`runtime-stores.test.ts`、`cache-bootstrap.test.ts`、`agents-md.test.ts`、`skills-cli-handlers.test.ts`、`skills-content.test.ts`，覆盖原子写、幂等注入、CRLF/BOM 保留、升级冲突 keep/overwrite、--dry-run、--purge-cache、UE4 dump 占位、skill hard rules 契约等。
+
+### Changed
+
+- **`scripts.build` 改为 `tsc -p tsconfig.json && node scripts/copy-skills.mjs`**：让发布产物里包含 skill 模板。`files` 字段已含 `dist`，无需调整。
+- **`src/runtime/server.ts` 启动末尾接 `scheduleCacheBootstrap`**：identity + workspaces 不再"只在内存里活着"，启动后立即异步落到 `~/.tapd/cache.json`。
+
+### Removed
+
+- **BREAKING**：移除 OMC plugin 提供的 3 个旧 user-scope skill（`tapd-server-cli:login` / `tapd-server-cli:logout` / `tapd-server-cli:update`）。等价能力已在新 skill 体系内引导：登录失败由 `tapd-troubleshoot` 引导跑 `npx tapd-server-cli login` / `logout`；版本检查仍是 `npx tapd-server-cli update`（CLI 命令本身不变）。这些命令并不依赖 skill 文件，所以仅"plugin 形式的 skill 入口"被替代。
+
+### Migration
+
+老用户从 0.3.x 升级到含此变更的版本：
+
+1. `npm install -g tapd-server-cli@latest`
+2. 跑一次 `npx tapd-server-cli install-skills --scope user`（首次安装会探测 TAPD 身份并写 `~/.tapd/cache.json`）
+3. 重启 MCP 客户端让 server 接收新启动序列
+4. 不再使用 plugin skill 时无需手动清理；如果之前装过 OMC plugin，按 OMC 自身的卸载流程处理
+
+回滚：跑 `npx tapd-server-cli uninstall-skills` 即可清掉 `install-skills` 写入的所有产物（SKILL 文件 / managed block / `tapd.config.json`）；MCP server 本身的 `mcpServers.tapd` 不受影响。
+
 ## [0.3.3] - 2026-05-30
 
 修复 v0.2.0 多子命令重构后埋下的致命回归:作为 MCP stdio server 裸跑时进程秒退,所有 v0.2.0 ~ v0.3.2 用户首次连接 MCP 客户端都会失败。

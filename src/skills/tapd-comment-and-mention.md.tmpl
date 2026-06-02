@@ -1,0 +1,102 @@
+---
+name: tapd-comment-and-mention
+description: |
+  Use when the user wants to add a single comment to a TAPD entity, with
+  or without an @-mention. This is the **only** TAPD write that is exempt
+  from the preview-confirmation gate (HARD-RULE-4 §exception): comments
+  add content, they don't break state. Send immediately and report the
+  result. @-mentions are translated to TAPD's `[~user_name]` syntax;
+  `knownUsers` are cached in `~/.tapd/cache.json` so we don't `tapd_users_list`
+  every time.
+
+  English triggers: comment on tapd, add comment, reply on bug, mention
+  someone, @ someone, ping in tapd, leave a note on #X.
+
+  中文触发：评论、加评论、回复、@某人、@张三、给 #1234 加备注、
+  写评论、留言、ping 一下。
+---
+
+# TAPD: Comment & Mention
+
+Single-point write — generate one `tapd_comments_create` call per
+invocation. Don't bundle multiple comments unless the user explicitly
+asked (and even then, route through the bulk-cap rule HARD-RULE-5).
+
+## Required fields
+
+| field | default | from |
+|---|---|---|
+| `workspace_id` | per `tapd-overview` | cache |
+| `entry_type` | — | user / context (`stories` / `bugs` / `tasks`) |
+| `entry_id` | — | user (e.g. `1234`) |
+| `description` | — | user message + @-translations applied |
+| `author` | `$ME` | cache |
+
+If the entity type is ambiguous, ask once: "评论到 story / bug / task 哪个？"
+
+## @-mention translation
+
+TAPD uses `[~user_name]` (literal characters) where `user_name` is the
+**TAPD username**, not user id, not @id. So:
+
+| User wrote | We send |
+|---|---|
+| `@张三` | `[~zhangsan]` (after lookup) |
+| `@王五` | `[~wangwu]` |
+| `@me` | `[~{{identity.tapdUserName}}]` |
+
+### Username lookup
+
+1. Read `~/.tapd/cache.json:knownUsers`. If the display name maps to a
+   `tapd_user_id` and we have the corresponding `tapd_user_name`, use that.
+2. If not in cache, call `tapd_users_list` once with a `name` filter (or
+   list all and grep). The MCP server will append the result to
+   `cache.json:knownUsers` automatically (see `mcp-skills` capability
+   "knownUsers wiring" — note: this wiring is staged for a follow-up
+   change, so for now you may need to write the user name yourself or
+   re-call `tapd_users_list` next time).
+3. If `users_list` doesn't return a match, **stop and ask** the user for
+   the precise TAPD username:
+
+   > 我在当前 workspace 找不到名为「张三」的用户。请告诉我他在 TAPD 里的
+   > 精确登录名（不是显示名）：
+
+   Don't guess; a wrong @ silently fails (TAPD just renders the literal
+   text without notifying anyone).
+
+## Send immediately, report after
+
+Comments don't need a preview block. Just call the tool, then:
+
+```
+✓ 评论已发到 bug #1234 (comment id: 9999)
+  @ 通知到: 张三 (zhangsan)
+```
+
+## Edge cases
+
+- **Empty description** → refuse, ask the user what to say.
+- **Description contains markdown** → TAPD evaluates it as **HTML**, not
+  markdown. Convert obvious markdown (e.g., `**bold**` → `<b>...</b>`) or
+  warn the user "这条会以 HTML 解析，markdown 可能不渲染——要我转一下吗？"
+- **User says "delete the comment"** → not supported (HARD-RULE-1). Tell
+  user: "评论一旦发出，我无法删除。请在 TAPD 网页端手动删除/编辑。"
+- **Multiple targets in one message** ("给 #1234 和 #5678 都评论") → split
+  into separate calls; HARD-RULE-5 applies (cap 10), HARD-RULE-4
+  exception applies (still no preview), but **before** sending, summarize
+  all targets to the user once and ask "确认这 N 条评论都发？" — this is
+  not a "preview" per HARD-RULE-4, it's a courtesy heads-up for batch.
+
+## What this skill does NOT do
+
+- Not a state changer (don't update status / owner from here — those are
+  separate flows with preview).
+- Not a markdown renderer (TAPD does HTML only).
+- Not a comment editor (TAPD API typically doesn't support edit; ignore
+  user requests for that).
+
+## Tools used
+
+- `tapd_comments_create` (the main call)
+- `tapd_users_list` (for @-mention name lookup, when not in
+  `knownUsers` cache)

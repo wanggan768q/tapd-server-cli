@@ -1,0 +1,105 @@
+---
+name: tapd-overview
+description: |
+  Use whenever a user mentions TAPD, asks what TAPD-related tools exist,
+  starts a new TAPD-related session, or wants to know which workspaces /
+  identity is in effect. This is the entry-point skill that loads the user
+  context (identity + workspaces) and routes to more specific skills.
+
+  English triggers: tapd, tapd tools, what can tapd do, list tapd workspaces,
+  who am I in tapd, how do I use tapd, tapd capabilities, tapd workspaces.
+
+  中文触发：tapd、tapd 能做什么、tapd 工具、查一下 tapd、有哪些工作空间、
+  tapd 项目、tapd 是什么、我是谁、当前 tapd 用户、tapd 帮助。
+---
+
+# TAPD MCP Overview
+
+This skill is the entry point for any TAPD-related request. Load it first;
+it tells you *who* the user is, *which workspaces* they can access, and
+*which downstream skill* should handle the actual task.
+
+## 1. Identity & cache
+
+The MCP server writes a snapshot to `~/.tapd/cache.json` on startup. Always
+read it before assuming anything. The schema (v1) is:
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "writtenAt": "<ISO 8601>",
+  "identity": { "tapdUserName": "...", "tapdUserId": "...", "tapdEmail"?: "..." },
+  "workspaces": [{ "id": "...", "name": "...", "role"?: "..." }],
+  "lastSelectedWorkspace"?: "<ws id>",
+  "knownUsers"?: [{ "tapdUserName": "...", "tapdUserId": "..." }]
+}
+```
+
+For this installation:
+
+- `$ME` (current user) — see `{{identity.tapdUserName}}` (id `{{identity.tapdUserId}}`)
+- Default workspace — `{{defaultWorkspaceId}}` (if set; otherwise ask)
+- Workspaces:
+{{workspaces}}
+
+If `cache.json` does not exist or fails to parse, tell the user to **restart
+the MCP client** so the server can re-probe identity. Do not proceed with
+queries until that completes.
+
+## 2. Workspace selection rules
+
+1. **Single workspace** → use it silently, no prompt.
+2. **Default set in `tapd.config.json:defaults.workspaceId`** → use it
+   silently.
+3. **Multiple workspaces, no default** → ask the user which one to query,
+   listing them with the `lastSelectedWorkspace` (if any) as a hint:
+   ```
+   你有 N 个 TAPD workspace，要查哪一个？
+     1. <id> — <name>
+     2. ...
+     或回 'all' 一起查。
+   ```
+4. After the user picks, suggest the server records this as
+   `lastSelectedWorkspace` (the comment / users tools do this on real calls).
+
+## 3. Capability map — what to call when
+
+| User intent (中英) | Tool family | Drill-down skill |
+|---|---|---|
+| "我的需求 / my stories", "我的 bug" | `tapd_stories_list`, `tapd_bugs_list` | `tapd-my-work` |
+| "实现 #1234 / pick up story" | `tapd_stories_get`, comments | `tapd-implement-story` |
+| "处理 bug #5678 / debug crash" | `tapd_bugs_get`, attachments | `tapd-handle-bug` |
+| "记 3 小时工时 / log timesheet" | `tapd_timesheets_create` | `tapd-log-time` |
+| "评论 + @张三" | `tapd_comments_create`, `tapd_users_list` | `tapd-comment-and-mention` |
+| "把 commit 同步到 TAPD" | `git log` + comments | `tapd-from-git-commit` |
+| TAPD field names / status enums | n/a | `tapd-fields-reference` |
+| 401 / 403 / cookie expired | n/a | `tapd-troubleshoot` |
+| **Any write operation** | n/a | `tapd-safety-rules` (MUST read) |
+
+## 4. Default behaviour for "my X" queries
+
+When the user says "看看我的 needs / 我的 bug" without naming anyone, default
+the filter to `current_owner = {{identity.tapdUserName}}`. If they say
+"张三的需求", use that name instead. Do not prompt unless ambiguous.
+
+See `tapd-my-work` for full filter rules (status filter, sorting, etc.).
+
+## 5. Before any write operation
+
+You **MUST** load `tapd-safety-rules` before calling any of the following
+tools, regardless of which skill you're in:
+
+- `tapd_*_create` (any entity create)
+- `tapd_*_update` (any entity update)
+- Any tool whose name implies state change (e.g. transition workflow)
+
+Comments (`tapd_comments_create`) are the only write that does not require
+the preview-confirmation gate; they still respect HARD-RULE-1..5.
+
+## 6. Output style
+
+- Use markdown tables for lists of more than 3 items.
+- Show TAPD entity IDs as `#1234` and link the user back via the workspace
+  context (the user knows which TAPD instance they use).
+- Prefer Chinese for prose when the user wrote in Chinese; mirror their
+  language otherwise.

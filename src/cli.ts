@@ -17,7 +17,21 @@ export type ParsedCli =
   | { mode: 'uninstall'; clients: string[]; dryRun: boolean; purge: boolean }
   | { mode: 'login'; timeout: number }
   | { mode: 'logout' }
-  | { mode: 'update'; json: boolean };
+  | { mode: 'update'; json: boolean }
+  | {
+      mode: 'install-skills';
+      clients: string[];
+      dryRun: boolean;
+      scope: 'user' | 'project' | undefined;
+    }
+  | {
+      mode: 'uninstall-skills';
+      clients: string[];
+      dryRun: boolean;
+      scope: 'user' | 'project' | undefined;
+      purgeCache: boolean;
+    }
+  | { mode: 'switch-role'; role: string };
 
 const SUPPORTED_CLIENTS = ['claude-code', 'codex', 'opencode', 'cursor'] as const;
 
@@ -83,6 +97,18 @@ export function parseCli(argv: readonly string[]): ParsedCli {
   let loginResult: { timeout: number } | undefined;
   let logoutResult: true | undefined;
   let updateResult: { json: boolean } | undefined;
+  let installSkillsResult:
+    | { clients: string[]; dryRun: boolean; scope: 'user' | 'project' | undefined }
+    | undefined;
+  let uninstallSkillsResult:
+    | {
+        clients: string[];
+        dryRun: boolean;
+        scope: 'user' | 'project' | undefined;
+        purgeCache: boolean;
+      }
+    | undefined;
+  let switchRoleResult: { role: string } | undefined;
 
   root
     .command('install [clients...]')
@@ -166,6 +192,90 @@ export function parseCli(argv: readonly string[]): ParsedCli {
       updateResult = { json: !!opts.json };
     });
 
+  root
+    .command('install-skills [clients...]')
+    .description(
+      `安装 TAPD MCP Skill 包到客户端（与 install 子命令独立——install 仅写 mcpServers.tapd 条目）。\n` +
+        `本版本仅交付 4 个共享 + 6 个普通用户 skill（共 10 个），不暴露 --role 选项。\n` +
+        `<client> 取值: ${SUPPORTED_CLIENTS.join(' / ')}`,
+    )
+    .option('--scope <scope>', '安装范围: user 或 project', (v) => {
+      if (v !== 'user' && v !== 'project') {
+        throw new Error(`--scope 必须是 user 或 project，收到 "${v}"`);
+      }
+      return v;
+    })
+    .option('--dry-run', '只打印将写入的目标路径与摘要，不实际写入')
+    .allowExcessArguments(false)
+    .action(
+      (
+        clients: string[] | undefined,
+        opts: { scope?: 'user' | 'project'; dryRun?: boolean },
+      ) => {
+        const list = clients ?? [];
+        for (const client of list) {
+          if (!SUPPORTED_CLIENTS.includes(client as (typeof SUPPORTED_CLIENTS)[number])) {
+            throw new UnknownClientError(client, SUPPORTED_CLIENTS);
+          }
+        }
+        installSkillsResult = {
+          clients: list,
+          dryRun: !!opts.dryRun,
+          scope: opts.scope,
+        };
+      },
+    );
+
+  root
+    .command('uninstall-skills [clients...]')
+    .description(
+      `卸载 TAPD MCP Skill 包。反向清理 install-skills 写入的产物（SKILL 文件 / managed block / config）。\n` +
+        `<client> 取值: ${SUPPORTED_CLIENTS.join(' / ')}\n` +
+        `--purge-cache 同时删除 ~/.tapd/cache.json（默认保留以便 server 启动复用）。`,
+    )
+    .option('--scope <scope>', '卸载范围: user 或 project', (v) => {
+      if (v !== 'user' && v !== 'project') {
+        throw new Error(`--scope 必须是 user 或 project，收到 "${v}"`);
+      }
+      return v;
+    })
+    .option('--dry-run', '只打印将清理的目标路径，不实际删除')
+    .option('--purge-cache', '同时删除 ~/.tapd/cache.json')
+    .allowExcessArguments(false)
+    .action(
+      (
+        clients: string[] | undefined,
+        opts: {
+          scope?: 'user' | 'project';
+          dryRun?: boolean;
+          purgeCache?: boolean;
+        },
+      ) => {
+        const list = clients ?? [];
+        for (const client of list) {
+          if (!SUPPORTED_CLIENTS.includes(client as (typeof SUPPORTED_CLIENTS)[number])) {
+            throw new UnknownClientError(client, SUPPORTED_CLIENTS);
+          }
+        }
+        uninstallSkillsResult = {
+          clients: list,
+          dryRun: !!opts.dryRun,
+          scope: opts.scope,
+          purgeCache: !!opts.purgeCache,
+        };
+      },
+    );
+
+  root
+    .command('switch-role <role>')
+    .description(
+      '切换 skill 安装包对应的角色——本版本仅占位，等管理者 skill 上线时再启用。',
+    )
+    .allowExcessArguments(false)
+    .action((role: string) => {
+      switchRoleResult = { role };
+    });
+
   root.parse(argv as string[], { from: 'user' });
 
   if (installResult) {
@@ -187,6 +297,26 @@ export function parseCli(argv: readonly string[]): ParsedCli {
   }
   if (updateResult) {
     return { mode: 'update', json: updateResult.json };
+  }
+  if (installSkillsResult) {
+    return {
+      mode: 'install-skills',
+      clients: installSkillsResult.clients,
+      dryRun: installSkillsResult.dryRun,
+      scope: installSkillsResult.scope,
+    };
+  }
+  if (uninstallSkillsResult) {
+    return {
+      mode: 'uninstall-skills',
+      clients: uninstallSkillsResult.clients,
+      dryRun: uninstallSkillsResult.dryRun,
+      scope: uninstallSkillsResult.scope,
+      purgeCache: uninstallSkillsResult.purgeCache,
+    };
+  }
+  if (switchRoleResult) {
+    return { mode: 'switch-role', role: switchRoleResult.role };
   }
 
   const opts = root.opts();

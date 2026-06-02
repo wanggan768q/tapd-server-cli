@@ -1,0 +1,87 @@
+---
+name: tapd-log-time
+description: |
+  Use when the user wants to record a single timesheet entry — "我今天在
+  #1234 花了 3 小时", "记一下用时", "log time on bug X". This is a single-
+  point write skill: one entry per call, owner defaults to $ME, date
+  defaults to today, must be linked to a story / bug / task. Goes through
+  the safety-rules preview gate (HARD-RULE-4) since it's a create.
+
+  English triggers: log time, log timesheet, record hours, time spent,
+  spend X hours on Y, add timesheet, log my work.
+
+  中文触发：记工时、加工时、写工时、用时、花了 X 小时、记一下时间、
+  timesheet、登记工时、报工时。
+---
+
+# TAPD: Log Timesheet
+
+A small, focused skill: capture exactly one timesheet entry from the
+user's natural sentence and submit it via `tapd_timesheets_create`.
+
+## Required fields (see `tapd-fields-reference`)
+
+| field | default | from |
+|---|---|---|
+| `workspace_id` | from `cache.json` (`tapd-overview` rules) | — |
+| `owner` | `{{identity.tapdUserName}}` (`$ME`) | cache |
+| `timespent` | — | user input ("3 小时") |
+| `spentdate` | today (`YYYY-MM-DD`) | system clock |
+| `story_id` / `bug_id` / `task_id` | — | user input ("#1234") |
+| `memo` | optional | user input |
+
+If the user said "在 #1234 花 3 小时", that's:
+
+```
+{ workspace_id, owner: $ME, timespent: 3, spentdate: <today>, story_id: 1234 }
+```
+
+If the entity type is ambiguous (just `#1234`, could be story / bug /
+task), ask once: "1234 是 story / bug / task 哪个？" Don't guess.
+
+## Preview gate (HARD-RULE-4)
+
+`timesheets_create` is a create → preview required:
+
+```
+即将记录工时：
+  - workspace: <ws id> (<name>)
+  - owner: 张三 (你)
+  - 关联: story #1234 (<title>)
+  - 用时: 3 小时
+  - 日期: 2026-05-30
+  - 备注: <memo or 空>
+确认？(yes / 修改 / 取消)
+```
+
+After `yes`, call the tool, then report:
+
+```
+✓ 工时已记录 (timesheet id: 9999, 关联 story #1234)
+```
+
+## What this skill does NOT do
+
+- **No batch backfill** — "帮我补上周一到周五每天 8 小时" is out of scope.
+  Refuse and explain: "批量补工时风险高（数字不准会污染统计）。请逐天告诉
+  我或在 TAPD 网页端手工补。"
+- **No auto-summary** — "本周已用多少小时" is a `tapd_timesheets_list`
+  query, not this skill. If the user asks, hand off to a list query
+  (workspace-scoped, `owner=$ME`, this week date range).
+- **No auto-context-association** — even if the user just talked about
+  bug #1234 in this conversation, do not auto-link the timesheet to it.
+  Ask the user explicitly: "记到哪个条目？" — context can be wrong, and a
+  wrong link is hard to undo.
+
+## Date format
+
+- "今天" / today → `YYYY-MM-DD` based on system clock
+- "昨天" → today - 1
+- 其它日期 → require explicit `YYYY-MM-DD` from the user, don't infer
+  from "上周三" (too easy to off-by-one)
+
+## Tools used
+
+- `tapd_timesheets_create` (one call per entry)
+- (Optional) `tapd_timesheets_list` if user asks "我今天已经记了多少"
+  before logging — one quick read, then continue.

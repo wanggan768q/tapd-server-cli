@@ -1,0 +1,141 @@
+---
+name: tapd-from-git-commit
+description: |
+  Use when the user has just made commits and wants to sync progress to
+  TAPD as comments — "把刚才的 commit 同步到 tapd", "based on git history
+  add comments to those bugs". Parses ONLY `--story=<id>` and
+  `--bug=<id>` flags from commit messages (case-insensitive). Scans the
+  current branch's last N commits (default 10). Always shows a preview
+  list of what will be commented and asks the user to choose [a]/[s]/[n]
+  before writing.
+
+  English triggers: from git commit, sync commits to tapd, post commits
+  to tapd, commit comments, add commit info to tapd.
+
+  中文触发：从 git 同步、git commit 同步 tapd、把 commit 写到 tapd、
+  根据 commit 加评论、同步进度、commit 评论。
+---
+
+# TAPD: Comment from Git Commits
+
+Take recent git commits, find TAPD entity references in commit messages,
+and post a comment to each referenced entity. **The user controls the
+batch.**
+
+## Reference syntax — only these two
+
+ONLY these formats are recognised (case-insensitive):
+
+- `--story=<id>` (e.g., `--Story=1234`)
+- `--bug=<id>` (e.g., `--BUG=5678`)
+
+**NOT recognised** (would create false positives):
+
+- `#1234` — too generic, conflicts with GitHub PR refs
+- `TAPD-1234` — not a project convention
+- `fix #1234` / `closes #1234` — same reason as `#1234`
+- bare numbers like `1234`
+
+If a project wants other patterns, that's a future extension; do NOT
+loosen the parser based on user request in-session.
+
+## Step 1 — Scan commits
+
+Run:
+
+```bash
+git log --oneline --no-decorate -n <N> --format='%H%x00%s%x00%an%x00%b%x00END%x00'
+```
+
+Default `N = 10`. User can override: "把最近 30 条 commit 同步" → `N = 30`.
+
+**Only the current branch.** Don't follow merge parents, don't scan other
+branches. If the user is in a detached HEAD or rebase state, warn them
+and stop.
+
+## Step 2 — Parse references
+
+For each commit, scan **subject + body** for the two patterns. Build:
+
+```
+[
+  { sha: "a1b2c3d", abbrev: "a1b2c3d", subject: "fix login NPE",
+    author: "张三", body: "...", refs: [{ type: "bug", id: "1234" }] },
+  ...
+]
+```
+
+A single commit may reference multiple entities (e.g., touched both a
+story and a bug). One TAPD entity may collect commits from multiple
+shas — all of those become separate comments on the same entity.
+
+## Step 3 — Preview the plan
+
+Show the user **everything that will happen**, grouped by target:
+
+```
+共解析到 3 个 commit，涉及 2 个 TAPD 条目：
+
+bug #1234 (从 1 个 commit):
+  - a1b2c3d "fix login NPE" (张三)
+
+story #5678 (从 2 个 commit):
+  - e4f5g6h "implement SSO" (张三)
+  - i7j8k9l "fix SSO redirect" (张三)
+
+将创建 3 条评论。如何处理？
+  [a] 全部发送
+  [s] 选择哪些发送（逐条挑）
+  [n] 取消
+```
+
+## Step 4 — Apply choice
+
+- `n` → stop, no writes.
+- `a` → write all comments. Each comment uses `tapd-comment-and-mention`
+  internally (so HARD-RULE-4 exception applies — no per-comment preview),
+  but HARD-RULE-5 cap of 10 still applies (split if > 10).
+- `s` → loop interactive: for each (commit, target) pair, ask
+  `[y/n]`, then collect the `y` ones and write them.
+
+## Comment template
+
+```
+[from commit a1b2c3d] fix login NPE
+
+Author: 张三
+SHA: a1b2c3deffabc...
+
+<commit body, if non-empty>
+```
+
+The first line `[from commit <abbrev>] <subject>` is the standard prefix
+that lets the team grep TAPD for "auto-commit-comments" later.
+
+## After writing
+
+Report a summary:
+
+```
+✓ 已发送 3 条评论:
+  - bug #1234: comment 9001
+  - story #5678: comment 9002, 9003
+```
+
+If any comment failed, list it with the failure reason — don't abort the
+remaining ones (similar to install-skills failure aggregation).
+
+## What this skill does NOT do
+
+- Doesn't update status / owner — only adds comments.
+- Doesn't loosen the parser — `#1234` and `TAPD-1234` are silently
+  ignored (the user can always pass them via `--bug=1234` if they really
+  meant TAPD).
+- Doesn't scan multiple branches.
+- Doesn't auto-trigger after every commit — only on explicit user
+  request.
+
+## Tools used
+
+- (system) `git log` — to enumerate commits
+- `tapd_comments_create` (per `tapd-comment-and-mention` flow)

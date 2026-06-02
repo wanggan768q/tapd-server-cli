@@ -1,0 +1,139 @@
+---
+name: tapd-troubleshoot
+description: |
+  Use when a TAPD MCP tool call fails — 401 / 403 / "unauthenticated" /
+  "forbidden" / cookie-expired / unexpected response shape — or when the
+  user reports any TAPD tool not working. Do NOT retry the failed call;
+  guide the user to re-authenticate and restart the client instead.
+
+  English triggers: tapd error, tapd failed, 401, 403, forbidden,
+  unauthorized, cookie expired, refresh permission, tapd not working,
+  tapd unauthenticated.
+
+  中文触发：tapd 报错、tapd 不能用、登录失效、cookie 过期、没权限、
+  403、401、刷新权限、tapd 出错、attachment 下载失败、附件不能下。
+---
+
+# TAPD Troubleshoot
+
+When a tool call fails, **DO NOT retry the same call automatically**. The
+correct response depends on the error class. Read the error code / message
+and route to the matching section below.
+
+## Decision tree
+
+```
+401 / unauthenticated  → PAT expired or invalid     → §A re-auth
+403 (attachments)      → cookie expired             → §B cookie re-login
+403 (regular tool)     → workspace permission lost  → §C refresh permission
+500 / 5xx              → TAPD server-side issue     → §D retry once, then stop
+timeout / network      → transient                  → §D retry once, then stop
+zod / schema error     → field mismatch             → §E field reference
+"workspace not in whitelist" → cache stale         → §C refresh permission
+```
+
+## §A — 401 / unauthenticated
+
+The PAT (`TAPD_TOKEN` env) is expired, revoked, or invalid.
+
+Tell the user:
+
+> TAPD 认证失败。请按以下步骤：
+>
+> 1. 登录 [TAPD](https://www.tapd.cn) → 设置 → 个人设置 → 安全设置 → API 令牌，
+>    重新生成或确认令牌还有效。
+> 2. 把新令牌写入 MCP 配置中的 `TAPD_TOKEN` 环境变量
+>    （Claude Code: `~/.claude.json` 的 `mcpServers.tapd.env.TAPD_TOKEN`）。
+> 3. 重启 Claude Code（或在该客户端跑 `/mcp` 重新连接 MCP server）。
+>
+> 重启后，server 会自动重新探测 `~/.tapd/cache.json` 里的 identity 和
+> workspace 列表。
+>
+> 我会等你确认完成后再继续。
+
+**Do not** call any tool until the user says they've re-auth'd. Do not retry
+the failed call.
+
+## §B — 403 on attachments / "cookie 过期"
+
+The cookie used by `tapd_attachments_download` has expired. The PAT path
+doesn't have attachment download scope for non-admin accounts (see project
+memory: TAPD PAT permission limits), so this server uses a browser-cookie
+fallback.
+
+Tell the user:
+
+> 附件下载需要的 cookie 失效了。请在终端运行：
+>
+> ```bash
+> npx tapd-server-cli login
+> ```
+>
+> 弹出的浏览器窗口里登录 TAPD，登录完成后 cookie 会自动写到
+> `~/.config/tapd-mcp/cookie`。然后：
+>
+> - Claude Code 用户：跑 `/mcp` 让 server 重新探测，或重启 Claude Code。
+> - 其它客户端：重启 client。
+>
+> Cookie 持续到下次过期为止。
+
+## §C — 403 on regular tool / "workspace not accessible"
+
+Either the user lost permission for that workspace, or `cache.json` is
+stale (e.g., a new project was added after server start). Try:
+
+1. Call `tapd_refresh_permissions` (if available) to re-fetch the
+   workspace whitelist.
+2. If still 403, tell the user:
+   > 你似乎没有访问 workspace `<id>` 的权限了。请在 TAPD 网页端确认
+   > 项目权限，或换一个有权限的 workspace。
+
+Do not retry the original call until the user confirms.
+
+## §D — 5xx / network timeout
+
+Transient. Retry **once**. If it fails again:
+
+> TAPD API 暂时不可达（`<status / message>`）。可能是 TAPD 维护或网络问题。
+> 等几分钟再试，或检查 `https://api.tapd.cn` 是否可访问。
+
+Stop. Do not loop retry.
+
+## §E — Schema / field error
+
+If the error mentions `zod`, "字段", "invalid", or shows TAPD returning
+an error like `"name 不能为空"`, the request payload was wrong.
+
+1. Read `tapd-fields-reference` to confirm the field set / required fields.
+2. For `status` enums specifically, call `tapd_workflows_list` first to get
+   the workspace's actual literal (it is project-specific).
+3. Show the user a corrected preview before retrying.
+
+## When the user changes account / token mid-session
+
+If the user manually edits `TAPD_TOKEN` while Claude is running, the running
+MCP server still holds the old identity in memory. After they update the
+token they MUST restart the client so:
+
+- The server fetches new identity (`/users/info`)
+- `~/.tapd/cache.json` is rewritten with the new user
+
+Until restart, queries will still use the **old user** as `$ME`.
+
+## Quick links to recover
+
+| Action | Command |
+|---|---|
+| Re-login attachment cookie | `npx tapd-server-cli login` |
+| Logout (clear cookie) | `npx tapd-server-cli logout` |
+| Check version / upgrade | `npx tapd-server-cli update` |
+| Re-install MCP config | `npx tapd-server-cli install <client>` |
+| Re-install skill bundle | `npx tapd-server-cli install-skills <client>` |
+
+## What this skill never does
+
+- Never retry a 401/403 silently.
+- Never write or "fix" `~/.tapd/cache.json` manually — let the server
+  re-probe by restart.
+- Never delete or move `~/.config/tapd-mcp/cookie` directly; use
+  `npx tapd-server-cli logout`.

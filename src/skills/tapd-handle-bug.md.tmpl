@@ -1,0 +1,259 @@
+---
+name: tapd-handle-bug
+description: |
+  Use when the user is going to investigate / fix a TAPD bug
+  ("处理一下 bug #1234", "看下这个崩溃 bug"). The flow pulls full
+  context, downloads attachments + (optionally) UE4 crash archives from
+  UNC paths, classifies files into a per-bug folder, and gives a
+  business-level analysis + repair direction. It does NOT write code, and
+  it does NOT auto-decompile dump files (the developer parses them in
+  Visual Studio).
+
+  English triggers: handle bug, investigate bug, debug crash, look at
+  bug #X, fix bug, bug attachments, ue4 crash, minidump, callstack.
+
+  中文触发：处理 bug、看下 bug、定位 bug、修一下 bug、bug 附件、崩溃、
+  堆栈、minidump、UE4 崩溃、看下崩溃、抓崩溃日志、bug 分析。
+---
+
+# TAPD: Handle Bug (evidence + analysis, not code)
+
+This is the bug-side counterpart to `tapd-implement-story`. The goal is to
+collect every piece of evidence into a structured per-bug folder, evaluate
+whether it's enough to start, then give a **business / logical analysis**
+with repair suggestions — never code edits.
+
+> Read `tapd-safety-rules` first. The HARD-RULE-2 reminder: even after
+> you've fixed the bug, **never set status to `closed`**. Mark `resolved`
+> and let QA / reporter close.
+
+## Phase 1 — Pull bug context
+
+1. `tapd_bugs_get` for bug `#<X>` — title, description, status, severity,
+   reporter, current_owner, custom fields.
+2. `tapd_comments_list` (`entry_type=bugs`) — full comment timeline.
+3. `tapd_attachments_list` (`entry_type=bugs`) — list attachments with
+   sizes; do not auto-download yet.
+
+Save the structured summary to `./.tapd-bugs/<bugID>/description.md`:
+
+```markdown
+# Bug #<X> — <title>
+
+- Status: <...>     Severity: <...>     Priority: <...>
+- Reporter: <...>   Current owner: <...>
+- Iteration: <...>  Module: <...>
+- Created: <...>    Modified: <...>
+
+## Description
+<original>
+
+## Comment timeline
+[YYYY-MM-DD HH:MM] <author>:
+<text>
+...
+```
+
+## Phase 2 — Evidence harvest from attachments
+
+Download all attachments and classify them into:
+
+```
+./.tapd-bugs/<bugID>/
+  description.md
+  stack/                ← stack traces (text from desc/comments + image attachments labeled "stack")
+    from-description.txt
+    from-comment-N.txt
+    UE4Minidump.dmp     ← if any (don't decompile)
+    UE4Minidump.parsed.txt   ← created empty placeholder; filled by user later
+    HOW-TO-PARSE.md     ← see Phase 4
+  logs/                 ← *.log / *.txt / containing "log/trace/console"
+    server.log
+    _unpacked/<original-archive>/   ← if archive auto-unpacked
+      stdout.log
+      stderr.log
+  other-attachments/    ← anything else (videos, screenshots not labeled stack, ...)
+```
+
+### Classification rules
+
+- File extension **`.log` / `.txt`** OR filename contains `log` / `trace` /
+  `console` → `logs/`
+- File extension **`.dmp`** OR text content of description / comments
+  matches a stack-trace pattern → `stack/`
+- Archive (`.zip`, `.tar.gz`, `.tgz`) → unpack into
+  `logs/_unpacked/<archive-name>/`, then re-classify the inner files.
+  - `.rar` / `.7z`: try if system has the tool (e.g. `7z` on PATH);
+    on failure, leave the archive in `logs/`, tell the user "无法自动
+    解压 X，建议手动解到 `<path>/_unpacked/...` 后告诉我"
+- Anything else → `other-attachments/`
+
+When unzipping fails, **don't abort the flow** — keep the archive, log a
+note in the analysis output that it couldn't be opened.
+
+## Phase 2.5 — UE4 crash UNC path detection
+
+If the bug description / comments mention a path like:
+
+```
+\\10.53.0.7\gst\GST\crash\trunk\2026-03-27\1774580152\
+```
+
+(UNC `\\host\share\...` or `//10.x.x.x/...`, with path keywords
+`crash` / `dump` / `minidump` / `UE4` / a YYYY-MM-DD-ish segment), this is
+likely a UE4 crash archive. Behaviour:
+
+1. **Ask the user first** — do not auto-pull (cross-host network).
+
+   > 在评论里发现疑似 UE4 崩溃归档：
+   >   `\\10.53.0.7\gst\GST\crash\trunk\2026-03-27\1774580152\`
+   > 是否拉取（dmp + log + xml）？(y / 跳过 / 改路径)
+
+2. If `y`, list the directory first (cap at top-level only). Pull only:
+   - `UE4Minidump.dmp`
+   - `*.log`, `*.txt` in the same directory
+   - `CrashContext.runtime-xml`
+   - Skip `today_logs/` backup logs by default; tell the user
+     "如需 backup log 自己从 `<unc path>` 拷一份".
+
+3. Drop them into the per-bug folder per the classification rules.
+
+4. Parse `CrashContext.runtime-xml` and write
+   `./.tapd-bugs/<bugID>/stack/crash-summary.md`:
+
+   ```markdown
+   # Crash Summary (#<bugID>)
+
+   - **CrashType**: <Assert / EnsureFail / ...>
+   - **CrashGUID**: <UE4CC-...>            ← use as fingerprint for de-dup
+   - **ErrorMessage**: <ErrorMessage from xml>
+   - **EngineVersion**: <...>
+   - **GameName**: <...>
+   - **Symbols**: <Symbols string from xml>
+   - **MachineID/CPU/GPU**: <one line>
+   - **SourceFile**: <断言所在文件>
+   - **SourceLine**: <断言行号>
+
+   Source UNC: <\\10.53.0.7\...>
+   ```
+
+5. Extract the "Critical error:" block + raw callstack from the main `.log`
+   into `./.tapd-bugs/<bugID>/stack/critical-error.txt`.
+
+If the UNC path is unreachable (network, permission, off-domain machine),
+**don't abort** — tell the user the path was unreachable and proceed with
+the description / comment analysis only.
+
+## Phase 3 — Sufficiency assessment
+
+Score the bug on:
+
+| Dimension | Look for |
+|---|---|
+| Reproduction steps | Numbered list / "复现步骤" |
+| Expected vs actual | Both stated explicitly |
+| Environment / version | OS, build, branch, changelist |
+| Stack OR log | At least one of: text stack in body, log file, dump |
+| Comment-thread additions | Repro hints, "我也遇到了", "改了 X 后还是不行" |
+
+Output ✅ / ⚠️ / ❌ each, just like `tapd-implement-story` Phase 3.
+
+## Phase 4 — Analysis
+
+If `stack/UE4Minidump.dmp` exists, write `stack/HOW-TO-PARSE.md`:
+
+```markdown
+# How to parse UE4Minidump.dmp
+
+## Option A: Visual Studio (recommended)
+1. 双击同目录的 `UE4Minidump.dmp`
+2. VS 自动加载 — 在 Solution Explorer 里确认你打开的是出这次崩溃的工程，
+   或者手动配置 Symbol Path 指到对应的 PDB 目录。
+3. 点 "Debug with Native Only"
+4. 复制 Threads 窗口里崩溃线程的完整堆栈
+5. 粘到本目录的 `UE4Minidump.parsed.txt` 并保存
+6. 告诉 AI："堆栈解析好了，继续分析"
+
+## Option B: Don't parse — proceed with raw callstack
+The `Gangstar.log` already includes a 38-frame callstack with hex
+addresses + module names. The skill will give you a coarse module-level
+analysis. If that's enough, just say "用 raw callstack 分析就行"。
+
+## Note
+- 这个 skill 不会自动跑 cdb / WinDbg。原因：本机通常没装 SDK 调试器，
+  且业务模块 PDB 在 CI 构建机上，跨机器拿不到。VS GUI 是最稳的路径。
+```
+
+Then run analysis. **Detect whether `UE4Minidump.parsed.txt` has content**:
+
+- **Empty / missing** → use `stack/critical-error.txt` raw callstack
+  (hex + module). Output a coarse analysis: "崩溃发生在模块
+  `UE4Editor-Gangstar.dll` 的 +0x xxx，断言信息是 `<...>` （来自 xml），
+  涉及 file `<source-file>:<line>`. 可能受影响范围: `<modules上下>`."
+  Append: "如需更精准请用 VS 解析 dmp 后粘到 `UE4Minidump.parsed.txt`。"
+- **Has content** → use the parsed callstack with function names. Give a
+  more specific analysis: "崩溃在 `FBar::Tick` 第 123 行；该函数读 X
+  字段，可能涉及空指针 / 数组越界等。"
+
+Either way, use the `xml` fields (`CrashType=Assert`, `ErrorMessage`,
+`SourceFile:Line`) as the primary signal — they're structured and reliable.
+
+Don't loop on cdb. Don't try to download PDBs. Don't write code patches.
+
+## Phase 5 — Repair direction (business / logical only)
+
+Output the user a "where to look" list, NOT a code patch:
+
+```
+## 修复方向
+- 怀疑根因: `<X 模块的 Y 方法>` 在断言条件 `<Z>` 时触发
+- 排查方向:
+  1. 确认 `<field A>` 在调用前是否为 nullptr 的可能路径
+  2. 看一下 `<related class>` 的初始化时序——这个 dll 最近改过吗？
+  3. 查 git blame `<file>:<line>` 找最近改动 + 责任人
+- 复现条件: 描述里写的是 `<...>`；如果重现不出来，问 reporter
+- 关联实体: 评论里提到 #5678 是相同 GUID，可能是重复 → 拿 CrashGUID
+  搜一下其它 bug
+```
+
+Stop here. If the user wants you to actually fix the code, they should ask
+explicitly — that's Claude Code's own coding ability, **not** this skill.
+
+## What this skill never does
+
+- Never auto-run cdb / WinDbg / dump_syms.
+- Never write code edits or commit messages.
+- Never close (HARD-RULE-2). Mark `resolved` once user confirms; don't
+  set `closed`.
+- Never delete the per-bug folder — let user clean up after they're done.
+  (Add `.tapd-bugs/` to project's `.gitignore` if not already.)
+
+## Tools used
+
+- `tapd_bugs_get`
+- `tapd_comments_list`
+- `tapd_attachments_list`, `tapd_attachments_download` (cookie required;
+  if 403 → `tapd-troubleshoot` §B)
+- (no TAPD tools for UNC path / disk operations — those are normal fs)
+
+## Output: tell the user what was collected
+
+After phases 1-3 complete:
+
+```
+已完成 bug #<X> 取证：
+  - description.md
+  - stack/    (3 个堆栈片段 + UE4Minidump.dmp 1.7MB)
+  - logs/     (Gangstar.log 295KB, EditorServer-backup-*.log 已跳过)
+  - other-attachments/ (1 张截图)
+
+评估:
+  - 复现步骤:    ✅
+  - 预期 vs 实际: ⚠️ (描述只说"崩溃了"，没说期望)
+  - 堆栈 / 日志:  ✅
+  - 评论补充:    ✅ (评论 #3 提到改 X 后偶尔还会复现)
+
+要继续分析吗?
+- 用 raw callstack 给粗结论 (立即可用)
+- 等你用 VS 解析 dmp，粘到 stack/UE4Minidump.parsed.txt 后再分析
+```

@@ -14,8 +14,11 @@
 
 import { loadToken } from './auth/token.js';
 import { parseCli, UnknownClientError } from './cli.js';
+import { installSkillsCommand } from './commands/install-skills-cli.js';
 import { loginCommand } from './commands/login-handler.js';
 import { logoutCommand } from './commands/logout-handler.js';
+import { switchRoleCommand } from './commands/switch-role-handler.js';
+import { uninstallSkillsCommand } from './commands/uninstall-skills-cli.js';
 import { updateCommand } from './commands/update-handler.js';
 import { ConfigError, EXIT_CODE_CONFIG, resolveConfig } from './config.js';
 import { ALL_ADAPTERS, runInstall } from './installer/flow.js';
@@ -119,6 +122,30 @@ async function main() {
 
   if (parsed.mode === 'update') {
     const r = await updateCommand({ json: parsed.json });
+    process.exit(r.exitCode);
+  }
+
+  if (parsed.mode === 'install-skills') {
+    const r = await installSkillsCommand({
+      clients: parsed.clients,
+      dryRun: parsed.dryRun,
+      scope: parsed.scope,
+    });
+    process.exit(r.exitCode);
+  }
+
+  if (parsed.mode === 'uninstall-skills') {
+    const r = await uninstallSkillsCommand({
+      clients: parsed.clients,
+      dryRun: parsed.dryRun,
+      scope: parsed.scope,
+      purgeCache: parsed.purgeCache,
+    });
+    process.exit(r.exitCode);
+  }
+
+  if (parsed.mode === 'switch-role') {
+    const r = switchRoleCommand({ role: parsed.role });
     process.exit(r.exitCode);
   }
 

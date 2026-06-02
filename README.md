@@ -198,7 +198,91 @@ npx tapd-server-cli --help                       # 详细帮助
 
 ---
 
-## 环境变量
+## 安装 Skills（让模型按规则使用 TAPD 工具）
+
+`install` 子命令只把 `mcpServers.tapd` 写到客户端配置里。模型并不知道**什么时候用哪个工具、字段语义、行为护栏**——这些"使用知识"以独立的 **Skill 包**形式发布，由 `install-skills` 子命令一键铺到客户端。
+
+> 普通安装流程（仅 MCP server）和 Skill 包是相互独立的：可以只装其一，也可以两个都装。
+
+### 一键安装
+
+```bash
+# 用户级：写到 ~/.claude/skills/、~/.codex/AGENTS.md 等
+npx tapd-server-cli install-skills claude-code codex --scope user
+
+# 项目级：写到当前目录下的 .claude/skills/、CLAUDE.md、AGENTS.md
+npx tapd-server-cli install-skills --scope project
+
+# 不指定 client：在 TTY 下弹出 checkbox 多选；非交互环境下报错
+npx tapd-server-cli install-skills
+
+# 仅预览，不写文件
+npx tapd-server-cli install-skills claude-code --scope user --dry-run
+```
+
+第一次运行时，CLI 会自动调 `tapd.whoami` + `tapd.list_workspaces` 探测身份并写到 `~/.tapd/cache.json`；之后的 `install-skills` 调用会复用这份缓存。
+
+### 装了什么
+
+10 个 skill（4 共享 + 6 普通用户）落到对应客户端的目录：
+
+| 客户端 | 用户级 | 项目级 |
+|---|---|---|
+| Claude Code | `~/.claude/skills/tapd-*/SKILL.md` + `~/.claude/CLAUDE.md` managed block | `<proj>/.claude/skills/tapd-*/SKILL.md` + `<proj>/CLAUDE.md` |
+| Codex | `~/.codex/AGENTS.md` managed block（含 skill 全文） | `<proj>/AGENTS.md` |
+| OpenCode | `~/.config/opencode/AGENTS.md` managed block | `<proj>/AGENTS.md`（与 Codex 共享） |
+| Cursor | `~/.cursor/rules/tapd.mdc` 全文 | `<proj>/.cursor/rules/tapd.mdc` |
+
+每次 `install-skills` 都是幂等的——重跑只会替换 managed block 内的内容，块外用户写的东西原样保留。CLAUDE.md / AGENTS.md 在写入前自动备份原文件（首次写入除外）。
+
+### 升级冲突
+
+如果你手改过某个 SKILL.md，下次 `install-skills` 检测到 hash 不匹配后，会询问 `keep` / `overwrite` / `show diff`：
+
+- 选 `keep` → 跳过这个文件（保留你的改动）
+- 选 `overwrite` → 把原文件备份到 `<file>.bak.<时间戳>`，再写新版
+- 非交互模式（CI / 管道）默认 `keep`，并在 stdout 列出跳过的清单
+
+### 卸载
+
+```bash
+# 默认：清掉 SKILL.md / managed block / tapd.config.json
+# 但保留 ~/.tapd/cache.json（server 启动还会用）
+npx tapd-server-cli uninstall-skills claude-code codex --scope user
+
+# 同时清掉 cache.json
+npx tapd-server-cli uninstall-skills claude-code --scope user --purge-cache
+
+# 仅预览
+npx tapd-server-cli uninstall-skills claude-code --scope user --dry-run
+```
+
+被你改过的 SKILL.md 会被移到 `<file>.bak.<时间戳>` 而不是直接删除——找不回的内容是工程师最大的痛。
+
+### 行为护栏（hard rules）
+
+skill 文件里固化了 5 条不可被项目配置覆盖的硬规则：
+
+1. **绝不删除任何 TAPD 条目**（不调 `tapd_*_delete`）
+2. **绝不把 bug 状态改为 `closed`**（仅到 `resolved`，由报告人 / QA 关闭）
+3. **普通用户不能创建 task**（`tapd_tasks_create`）
+4. **写操作确认网关**：评论可直接发；改状态 / 改 owner / 创建 / 批量必须先 preview
+5. **批量上限 10 条**（超出拆批，每批单独确认）
+
+详见 `tapd-safety-rules` skill 的正文。
+
+### 相关命令
+
+| 命令 | 作用 |
+|---|---|
+| `npx tapd-server-cli install-skills <client...>` | 安装 skill 包 |
+| `npx tapd-server-cli uninstall-skills <client...>` | 卸载 skill 包，可选 `--purge-cache` |
+| `npx tapd-server-cli login` | 重新抓 cookie（处理 401/403） |
+| `npx tapd-server-cli update` | 检查 npm 上有无新版 |
+
+> 注：`switch-role` 子命令是占位——管理者 skill 上线后才启用，本版本运行会以退出码 2 提示。
+
+
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
