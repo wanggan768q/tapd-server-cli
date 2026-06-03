@@ -72,7 +72,6 @@
     "url": "https://github.com/wanggan768q/tapd-server-cli/issues"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   }
 }
