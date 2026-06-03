@@ -12,7 +12,7 @@
  *   3) 校验 CHANGELOG.md 顶部含 [<version>] 段（硬门禁，缺则拒绝发版）
  *   4) npm ci → typecheck → test → build
  *   5) 提示输入 npm OTP（6 位数字，从你的 Authenticator app 取）
- *   6) npm publish --access public --provenance --otp=<...>
+ *   6) npm publish --access public [--provenance if CI] [--otp=...] (本地默认无 provenance)
  *   7) push tag 到 origin（让 GitHub Release 也建出来 —— 由 CI 触发或本地兜底）
  *
  * 安全：
@@ -35,6 +35,30 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const DRY_RUN = process.argv.includes('--dry-run');
 const NO_OTP = process.argv.includes('--no-otp');
+
+// --provenance / --no-provenance:
+// npm 的 sigstore provenance 需要 CI 环境的 OIDC token，本地直接跑会拿到
+// `Automatic provenance generation not supported for provider: null`。
+// 默认行为：在已知 CI 环境（CI / GITHUB_ACTIONS / GITLAB_CI / BUILDKITE）开启，
+// 否则关闭。用户也可以用 --provenance / --no-provenance 显式覆盖。
+const FORCE_PROVENANCE = process.argv.includes('--provenance');
+const NO_PROVENANCE = process.argv.includes('--no-provenance');
+function isInCI() {
+  const env = process.env;
+  return (
+    env.CI === 'true' ||
+    env.GITHUB_ACTIONS === 'true' ||
+    env.GITLAB_CI === 'true' ||
+    env.BUILDKITE === 'true' ||
+    env.CIRCLECI === 'true' ||
+    env.TRAVIS === 'true'
+  );
+}
+const USE_PROVENANCE = NO_PROVENANCE
+  ? false
+  : FORCE_PROVENANCE
+    ? true
+    : isInCI();
 
 // -------- 输出工具（简单 ANSI 颜色，Windows 终端兼容）--------
 const isTTY = process.stdout.isTTY === true;
@@ -346,8 +370,15 @@ async function doPublish(version) {
     '--registry=https://registry.npmjs.org/',
     '--access',
     'public',
-    '--provenance',
   ];
+  if (USE_PROVENANCE) {
+    args.push('--provenance');
+    info('已启用 sigstore provenance（CI 环境或 --provenance 强制）');
+  } else {
+    info(
+      '未启用 provenance（本地非 CI 环境；如需 sigstore 签名请通过 GitHub Actions release.yml 走 tag 路径，或加 --provenance 强制本地尝试）',
+    );
+  }
   if (DRY_RUN) args.push('--dry-run');
   if (otp) args.push(`--otp=${otp}`);
   // 关键：用 spawn 不打印 args（OTP 不能出现在 stdout 日志里）
