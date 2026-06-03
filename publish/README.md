@@ -29,7 +29,7 @@
 ```
 1. 在 Windows 资源管理器里打开本目录
 2. 双击 publish.bat
-3. 按提示一路 Enter / 输入 OTP
+3. 按提示一路 Enter（如果未登录 npm，脚本会自动触发 npm login）
 4. 完成后窗口会显示验证命令，按任意键关闭
 ```
 
@@ -54,19 +54,30 @@ node scripts\publish.mjs
 | 3/7 | 在 `main` 分支，工作树干净，本地与 origin 同步（不同步会问是否 push） | 看脚本输出的具体修复指令 |
 | 4/7 | 已登录 npm 官方 registry（`npm whoami` 能拿到用户名） | `npm login --registry=https://registry.npmjs.org/` |
 | 5/7 | 代理可达（`HTTPS_PROXY` env 或本机 `127.0.0.1:7890` 任一） | 国内用户：开 Clash / V2Ray；国外用户：忽略警告 |
-| 6/7 | 用户最终确认 + 调 `publish.mjs` | `publish.mjs` 自身处理 CHANGELOG / 测试 / 发布 / OTP / 打 tag |
+| 6/7 | 用户最终确认 + 调 `publish.mjs --no-otp` | `publish.mjs` 自身处理 CHANGELOG / 测试 / 发布 / 打 tag |
 | 7/7 | 跑完总结 | 失败时给具体恢复命令 |
 
 ---
 
-## OTP（npm 二步验证）
+## npm 2FA 与 OTP
 
-`publish.mjs` 跑到 `npm publish` 那步会要求你输入 OTP。
+**当前 npm 账号 `wanggan768q` 未开启 2FA**（`npm profile get` 显示
+`two-factor auth: disabled`），所以：
 
-- 打开你的 Authenticator app（Google Authenticator / 1Password / 微软 Authenticator 等）
-- 找到 npmjs.com 这个 entry
-- 输入当前显示的 6 位数字
-- 30 秒一变，输入完立刻按 Enter，不要等下一轮
+- `npm login` 只问 username / password / email，**不要 OTP**
+- `npm publish` 不要 OTP
+- 脚本调 `publish.mjs --no-otp` 标志，跳过 OTP 提问步骤
+- v0.3.2 已成功发布过 `--provenance` 包，证明无 2FA 也能拿 sigstore 签名
+
+**如果你将来给账号开了 2FA**，需要：
+
+1. 在 npmjs.com → Account → Two-Factor Authentication 开启
+2. 编辑 `publish/publish.ps1`，把 `& node scripts\publish.mjs --no-otp`
+   里的 `--no-otp` 删掉
+3. 然后跑发版时，`npm login` 会要 1 次 OTP，`npm publish` 会再要 1 次
+
+**OTP 来源**：Authenticator app（Google Authenticator / 1Password /
+微软 Authenticator 等）中找到 npmjs.com 这个 entry，输入当前 6 位数字。
 
 ---
 

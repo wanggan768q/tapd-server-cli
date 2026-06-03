@@ -174,7 +174,7 @@ $whoami = Get-NpmWhoami
 if (-not $whoami) {
   Say-Warn "Not logged in to npm registry (or login token expired)."
   Write-Host "      This will start: npm login --registry=https://registry.npmjs.org/" -ForegroundColor Gray
-  Write-Host "      It will prompt for: username / password / email / OTP (browser-based on newer npm)." -ForegroundColor Gray
+  Write-Host "      It will prompt for: username / password / email (no OTP since 2FA is disabled on this account)." -ForegroundColor Gray
   Write-Host ""
   $ans = Read-Host "  Run npm login now? [Y/n]"
   if ($ans -ne '' -and $ans -notmatch '^[Yy]') {
@@ -256,11 +256,11 @@ if ($ans -ne '' -and $ans -notmatch '^[Yy]') {
 }
 
 Write-Host ""
-Write-Host "  publish.mjs will run: git checks / CHANGELOG extract / npm ci+typecheck+test+build / npm publish (asks OTP) / git tag" -ForegroundColor Gray
-Write-Host "  OTP = 6-digit code from your Authenticator app, prompted by publish.mjs" -ForegroundColor Gray
+Write-Host "  publish.mjs will run: git checks / CHANGELOG extract / npm ci+typecheck+test+build / npm publish / git tag" -ForegroundColor Gray
+Write-Host "  --no-otp passed: account has 2FA disabled, no Authenticator code needed" -ForegroundColor Gray
 Write-Host ""
 
-& node scripts\publish.mjs
+& node scripts\publish.mjs --no-otp
 $exit = $LASTEXITCODE
 
 # -------- 7. summary --------
@@ -279,7 +279,6 @@ if ($exit -eq 0) {
   Say-Err "publish.mjs exit code $exit"
   Write-Host ""
   Write-Host "  Common recoveries:" -ForegroundColor Yellow
-  Write-Host "    OTP wrong              -> rerun publish.bat (git/CHANGELOG unchanged)" -ForegroundColor Yellow
   Write-Host "    npm ci network dies    -> verify proxy: curl -x http://127.0.0.1:7890 https://registry.npmjs.org/" -ForegroundColor Yellow
   Write-Host "    npm publish 401        -> npm login --registry=https://registry.npmjs.org/" -ForegroundColor Yellow
   Write-Host "    publish OK, tag missing-> git push origin v$($pkg.version)" -ForegroundColor Yellow
