@@ -76,11 +76,22 @@ queries until that completes.
 | 401 / 403 / cookie expired | n/a | `tapd-troubleshoot` |
 | **Any write operation** | n/a | `tapd-safety-rules` (MUST read) |
 
-## 4. Default behaviour for "my X" queries
+## 4. Default behaviour for queries — always scope to $ME first
 
-When the user says "看看我的 needs / 我的 bug" without naming anyone, default
-the filter to `current_owner = {{identity.tapdUserName}}`. If they say
-"张三的需求", use that name instead. Do not prompt unless ambiguous.
+**Unless the user explicitly names another person, ALL list queries default
+to `current_owner = {{identity.tapdUserName}}`.**
+
+This applies to every query phrasing:
+- "查询 bug" / "看下 bug" / "有哪些 bug" → add `current_owner = {{identity.tapdUserName}}`
+- "查需求" / "看需求" / "故事列表" → add `current_owner = {{identity.tapdUserName}}`
+- "我的 bug" / "我的需求" → same, `current_owner = {{identity.tapdUserName}}`
+
+Only skip this default when the user **explicitly names another person**:
+- "张三的需求" → `current_owner = 张三`
+- "本期所有人的 bug" / "全部 bug 不过滤人" → remove the owner filter entirely
+
+Do not prompt unless truly ambiguous (e.g. "查下 bug，看看有没有和我相关的"
+is fine to interpret as `current_owner = $ME`).
 
 See `tapd-my-work` for full filter rules (status filter, sorting, etc.).
 

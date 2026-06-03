@@ -8,10 +8,14 @@ description: |
   closed/resolved/completed by default.
 
   English triggers: my work, my bugs, my stories, my tasks, assigned to me,
-  what's on my plate, current iteration mine, my tapd, what should I do.
+  what's on my plate, current iteration mine, my tapd, what should I do,
+  list bugs, show bugs, query bugs, list stories, show stories, query stories,
+  check bugs, check stories.
 
   中文触发：我的需求、我的 bug、我的任务、分给我的、我手头上的、
-  我这边的、本期我要做、我负责的、我手头有什么、看下我的、我的工作。
+  我这边的、本期我要做、我负责的、我手头有什么、看下我的、我的工作、
+  查 bug、查需求、看 bug、看需求、看下 bug、看下需求、有哪些 bug、
+  有哪些需求、查一下 bug、查询 bug、查询需求。
 ---
 
 # TAPD: My Work
@@ -21,8 +25,12 @@ Default lookup for "what's mine to work on right now". Reads
 
 ## Default behaviour
 
-When the user says "看看我的需求 / 我的 bug" or similar without naming a
-person:
+**当用户发起任何涉及 story / bug 的列表查询，且未明确指定某人时，一律默认
+`current_owner = $ME`。** 不要因为用户没说"我的"就去掉这个过滤器——
+"查 bug"、"看下需求"、"有哪些 bug" 全都等同于 "看我的 bug / 我的需求"。
+
+When the user asks about stories / bugs without naming a person (including
+generic queries like "查 bug", "看需求", "有哪些 bug"):
 
 1. Resolve `$ME` from `cache.json:identity.tapdUserName` —
    currently **{{identity.tapdUserName}}**.
@@ -70,11 +78,16 @@ When showing the result, use a markdown table:
 
 | User says | Filter applied |
 |---|---|
+| "查 bug" / "查需求" / "看下需求" (无人名) | `current_owner = $ME`（**默认**，即使没说"我的"） |
 | "查我的需求" | `current_owner = $ME`, type = stories |
 | "查张三的需求" | `current_owner = 张三`, type = stories |
 | "本期所有人的 bug" | NO `current_owner` filter, scoped to current iteration |
+| "全部 bug" / "不过滤人" | NO `current_owner` filter |
 | "包括我已完成的" | `current_owner = $ME`, NO status filter |
 | "@me 任务" | also include tasks (`tapd_tasks_list`) |
+
+> **关键规则**：只要用户没有明确说某人的或"全部/所有人"，一律默认
+> `current_owner = $ME`。不要因为用户没说"我的"就去掉这个过滤器。
 
 ## What this skill does NOT do
 
