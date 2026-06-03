@@ -152,21 +152,66 @@ if ($originSha) {
 
 # -------- 4. npm login --------
 Say-Step 4 7 "Check npm login"
-$whoami = $null
-try {
-  $whoami = ((& npm whoami --registry=https://registry.npmjs.org/ 2>&1) | Out-String).Trim()
-} catch {
-  Die "npm whoami failed" @(
-    "Login:",
-    "  npm login --registry=https://registry.npmjs.org/"
-  )
+
+# Helper: detect whether npm whoami succeeds against the official registry.
+# Returns the username string on success, or $null on any failure
+# (network / not-logged-in / ENEEDAUTH / 401).
+function Get-NpmWhoami {
+  try {
+    $out = ((& npm whoami --registry=https://registry.npmjs.org/ 2>&1) | Out-String).Trim()
+    if (-not $out) { return $null }
+    if ($out -match 'ENEEDAUTH|not logged in|401|404') { return $null }
+    return $out
+  } catch {
+    return $null
+  }
 }
-if (-not $whoami -or $whoami -match 'ENEEDAUTH|not logged in|404') {
-  Die "Not logged in to npm registry" @(
-    "Login:",
-    "  npm login --registry=https://registry.npmjs.org/"
-  )
+
+$whoami = Get-NpmWhoami
+
+# Not logged in? Offer to run `npm login` inline so the user does not have
+# to drop out of this flow and re-run the script.
+if (-not $whoami) {
+  Say-Warn "Not logged in to npm registry (or login token expired)."
+  Write-Host "      This will start: npm login --registry=https://registry.npmjs.org/" -ForegroundColor Gray
+  Write-Host "      It will prompt for: username / password / email / OTP (browser-based on newer npm)." -ForegroundColor Gray
+  Write-Host ""
+  $ans = Read-Host "  Run npm login now? [Y/n]"
+  if ($ans -ne '' -and $ans -notmatch '^[Yy]') {
+    Die "User declined npm login" @(
+      "Login manually then re-run this script:",
+      "  npm login --registry=https://registry.npmjs.org/"
+    )
+  }
+  Write-Host ""
+  Write-Host "  ----- npm login -----" -ForegroundColor Magenta
+  # Important: do NOT pipe / capture — npm login is interactive and must
+  # inherit stdin/stdout/stderr verbatim. PowerShell call operator (&)
+  # does this by default.
+  & npm login --registry=https://registry.npmjs.org/
+  $loginExit = $LASTEXITCODE
+  Write-Host "  ----- end npm login -----" -ForegroundColor Magenta
+  Write-Host ""
+  if ($loginExit -ne 0) {
+    Die "npm login exited with code $loginExit" @(
+      "Network issue or wrong credentials. Try manually:",
+      "  npm login --registry=https://registry.npmjs.org/",
+      "Common causes:",
+      "  - Behind GFW: set `$env:HTTPS_PROXY='http://127.0.0.1:7890' first",
+      "  - 2FA / OTP entered wrong: just retry",
+      "  - Account locked / suspended: check email from npm"
+    )
+  }
+  # Re-check after login
+  $whoami = Get-NpmWhoami
+  if (-not $whoami) {
+    Die "npm login finished but whoami still empty" @(
+      "Try opening a new terminal (env may need refresh):",
+      "  npm whoami --registry=https://registry.npmjs.org/"
+    )
+  }
 }
+
 Say-Ok "Logged in as: $whoami"
 
 # -------- 5. proxy probe --------
