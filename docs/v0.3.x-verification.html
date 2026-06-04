@@ -288,17 +288,18 @@
 
 <main>
 
-<h1>tapd-server-cli v0.3.x 验证手册
-  <span class="version">本手册对齐 v0.3.3 + add-mcp-skills 变更（10 个 MCP Skill + 新子命令 install-skills / uninstall-skills / switch-role）</span>
+<h1>tapd-server-cli 验证手册
+  <span class="version">本手册对齐 v0.4.1（10 个 MCP Skill + install-skills / uninstall-skills / switch-role + 默认查询过滤优化）</span>
 </h1>
 
 <div class="meta-bar">
-  <p><strong>最近变更：</strong>add-mcp-skills（74/74 任务全部完成；OpenSpec 4/4 工件 valid；预计随下一次 patch 一并发版）｜ <strong>最近发布：</strong>v0.3.3（2026-05-30，修 v0.2.0 引入的 server 模式 default action 回归）｜ <strong>npm tarball：</strong><code>tapd-server-cli@latest</code> ｜ <strong>GitHub Releases：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/releases">列表</a></p>
-  <p><strong>add-mcp-skills 主要变化：</strong>① 新增 10 个 MCP Skill（4 共享 + 6 普通用户），随 npm 包发布到 <code>dist/skills/*.md.tmpl</code>；② 新增 CLI 子命令 <code>install-skills</code> / <code>uninstall-skills</code>（与现有 <code>install</code>/<code>uninstall</code> 独立）+ <code>switch-role</code> 占位；③ <code>~/.tapd/</code> 目录承载安装期 <code>tapd.config.json</code> + 运行期 <code>cache.json</code>；④ MCP server 启动末尾异步写 cache.json；⑤ 行为硬规则（<code>tapd-safety-rules</code>）：禁全员删除条目、禁全员关 bug、禁普通用户建 task、写操作 preview 网关、批量上限 10。</p>
+  <p><strong>最近发布：</strong>v0.4.1（2026-06-04，修复查询 TAPD 时未默认过滤到当前用户）｜ <strong>npm tarball：</strong><code>tapd-server-cli@latest</code> ｜ <strong>GitHub Releases：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/releases">列表</a></p>
+  <p><strong>v0.4.1 修复：</strong>① <code>tapd-my-work</code> 和 <code>tapd-overview</code> skill 查询时默认过滤 <code>current_owner=$ME</code>，之前只有说"我的"才过滤，说"查 bug"会查出全项目所有人的数据；② 触发词补充"查 bug、查需求、看下需求"等泛查询措辞，确保 skill 在这些场景下被正确激活。<strong>升级后需重装 skill</strong>，见步骤 7 的「升级 Skill」一节。</p>
+  <p><strong>v0.4.0 主要变化（add-mcp-skills）：</strong>① 新增 10 个 MCP Skill（4 共享 + 6 普通用户），随 npm 包发布到 <code>dist/skills/*.md.tmpl</code>；② 新增 CLI 子命令 <code>install-skills</code> / <code>uninstall-skills</code>（与现有 <code>install</code>/<code>uninstall</code> 独立）+ <code>switch-role</code> 占位；③ <code>~/.tapd/</code> 目录承载安装期 <code>tapd.config.json</code> + 运行期 <code>cache.json</code>；④ MCP server 启动末尾异步写 cache.json；⑤ 行为硬规则（<code>tapd-safety-rules</code>）：禁全员删除条目、禁全员关 bug、禁普通用户建 task、写操作 preview 网关、批量上限 10。</p>
   <p><strong>v0.3.3 修复：</strong>v0.2.0 多子命令重构后 server 模式 default action 被删，所有 v0.2.0 ~ v0.3.2 用户首次连 MCP 客户端进程秒退；<code>cli.ts</code> 补回 <code>.action(()=>{})</code>，新增 7 条 server 模式回归测试。</p>
-  <p><strong>v0.3.2 主要变化：</strong>① 撤回 v0.3.0 的"<code>install claude-code</code> 顺手把 <code>commands/*.md</code> 拷到 <code>~/.claude/commands/tapd-server-cli/</code>"——业界主流 MCP server (GitHub / Notion / Playwright / Filesystem / Supabase) 都不这样做；② README 重排为业界标准顺序，主推 <code>claude mcp add-json --scope user</code> / 粘 JSON / 粘 TOML，私有 <code>npx tapd-server-cli install</code> 多客户端便利脚本降级为可选；③ <code>release.yml</code> 的 <code>npm ci</code> 加 3 次 retry，与 <code>ci.yml</code> 对齐抗 transient flake。</p>
-  <p><strong>v0.3.1 增量：</strong><code>main()</code> 入口新增 Node.js 版本运行时自检（&lt; 22.13.0 直接 exit 2 + 中文友好提示）；<code>engines.node</code> 同步提升到 <code>&gt;=22.13.0</code>；CI 矩阵升到 Node 22/24，<code>npm ci</code> 加 3 次 retry。</p>
-  <p><strong>v0.3.0 增量：</strong>删除 Claude Code plugin 体系（marketplace add 路径撤回）；新增 CLI 子命令 <code>login</code> / <code>logout</code> / <code>update</code>，替代被移除的 <code>tapd.update</code> MCP 工具。</p>
+  <p><strong>v0.3.2 主要变化：</strong>① 撤回 v0.3.0 的"<code>install claude-code</code> 顺手把 <code>commands/*.md</code> 拷到 <code>~/.claude/commands/tapd-server-cli/</code>"——业界主流 MCP server 都不这样做；② README 重排为业界标准顺序，主�� <code>claude mcp add-json --scope user</code> / 粘 JSON / 粘 TOML；③ <code>release.yml</code> 的 <code>npm ci</code> 加 3 次 retry，与 <code>ci.yml</code> 对齐。</p>
+  <p><strong>v0.3.1 增量：</strong><code>main()</code> 入口新增 Node.js 版本运行时自检（&lt; 22.13.0 直接 exit 2 + 中文友好提示）；<code>engines.node</code> 同步提升到 <code>&gt;=22.13.0</code>。</p>
+  <p><strong>v0.3.0 增量：</strong>删除 Claude Code plugin 体系（marketplace add 路径撤回）；新增 CLI 子命令 <code>login</code> / <code>logout</code> / <code>update</code>。</p>
 </div>
 
 <!-- ============================================================
@@ -316,6 +317,7 @@
   <li><a href="#u-step5">附件下载工具出现并能下载一份附件</a></li>
   <li><a href="#u-step6">升级、卸载入口符合预期</a></li>
   <li><a href="#u-step7"><strong>NEW</strong>：<code>install-skills</code> 一键铺 10 个 MCP Skill 到客户端</a></li>
+  <li><a href="#u-step7"><strong>升级后</strong>：重装 skill 后"查 bug"默认只返回当前用户的数据（v0.4.1）</a></li>
 </ol>
 
 <div class="callout tip">
@@ -651,6 +653,55 @@ npx -y tapd-server-cli install-skills claude-code --scope user
     <li>修复建议 <strong>只给业务/逻辑层方向</strong>，不写代码</li>
   </ol>
 
+  <div class="step-title" style="margin-top: 16px;">升级 Skill（tapd-server-cli 版本升级后）</div>
+
+  <div class="callout tip">
+    <div class="callout-title">为什么需要手动重装 Skill？</div>
+    <code>tapd-server-cli</code> 升级后，npm 包内的 skill 模板已更新，但已安装到 <code>~/.claude/skills/</code> 的文件<strong>不会自动更新</strong>。需要手动执行 <code>install-skills</code> 覆盖安装。
+  </div>
+
+  <div class="step">
+    <div class="step-title">方法 A：直接覆盖安装（推荐，适合未改过 skill 文件的用户）</div>
+<pre><code># 删除旧 skill 文件后重装（最简单，适合没改过 SKILL.md 的用户）
+# 先删掉已安装的 skill 目录
+rm -rf ~/.claude/skills/tapd-*/
+
+# 重新安装最新版 skill
+npx tapd-server-cli install-skills claude-code --scope user</code></pre>
+    <p>Windows 用户用 PowerShell：</p>
+<pre><code>Remove-Item -Recurse -Force "$env:USERPROFILE\.claude\skills\tapd-*"
+npx tapd-server-cli install-skills claude-code --scope user</code></pre>
+  </div>
+
+  <div class="step">
+    <div class="step-title">方法 B：交互式升级（适合改过 SKILL.md、想保留本地改动的用户）</div>
+<pre><code># 在 TTY 终端执行（会弹出 keep/overwrite/show diff 选项）
+npx tapd-server-cli install-skills claude-code --scope user</code></pre>
+    <p>遇到冲突时：</p>
+    <ul>
+      <li><code>keep</code>：保留你的本地改动，跳过更新</li>
+      <li><code>overwrite</code>：用新版覆盖，原文件自动备份到 <code>SKILL.md.bak.&lt;timestamp&gt;</code></li>
+      <li><code>show diff</code>：先看差异再决定</li>
+    </ul>
+  </div>
+
+  <h4>验证升级成功 <span class="badge badge-ok">PASS 标准</span></h4>
+  <ul>
+    <li>退出码 0；stdout 含 <code>✔ claude-code: wrote</code></li>
+    <li><strong>重启 Claude Code</strong>（必须重启，新 skill 才会被加载）</li>
+    <li>重启后问一句"查下 bug"——模型应只返回<strong>当前用户</strong>负责的 bug，不再返回全项目所有人的数据（v0.4.1 修复的核心行为）</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="callout-title">升级 v0.4.0 → v0.4.1 的用户注意</div>
+    v0.4.1 修复了 skill 内容 bug（默认查询不过滤 owner），<strong>只更新了 skill 模板，MCP server 本体不变</strong>。不需要重新执行 <code>install claude-code</code>，只需重装 skill：
+<pre><code># 删旧文件（tapd-my-work 和 tapd-overview 是受影响的 skill）
+rm -rf ~/.claude/skills/tapd-my-work ~/.claude/skills/tapd-overview
+# 重装（10 个 skill 会一起刷新）
+npx tapd-server-cli install-skills claude-code --scope user
+# 重启 Claude Code</code></pre>
+  </div>
+
   <div class="step-title" style="margin-top: 16px;">卸载</div>
 <pre><code># 默认：清 SKILL.md / managed block / tapd.config.json，但保留 cache.json
 npx -y tapd-server-cli uninstall-skills claude-code codex --scope user
@@ -893,26 +944,26 @@ npx -y tapd-server-cli uninstall-skills claude-code --scope user --dry-run</code
 
 <div class="step">
   <div class="step-title">验证命令</div>
-<pre><code># 版本号实际可拉（替换 0.3.2 为实际发版号）
-npm view tapd-server-cli@0.3.2 version
-# 期望输出：0.3.2
+<pre><code># 版本号实际可拉（替换为实际发版号）
+npm view tapd-server-cli@0.4.1 version
+# 期望输出：0.4.1
 
 # tarball 完整性
-npm view tapd-server-cli@0.3.2 dist.tarball dist.shasum dist.integrity
+npm view tapd-server-cli@0.4.1 dist.tarball dist.shasum dist.integrity
 
 # provenance 链（sigstore）
-npm view tapd-server-cli@0.3.2 dist.signatures
+npm view tapd-server-cli@0.4.1 dist.signatures
 # 期望含 keyid 与 sig 字段
 
-# 包内容审计：dist/commands/ handler 在；commands/ slash 命令模板不在
-npm pack tapd-server-cli@0.3.2
-tar -tzf tapd-server-cli-0.3.2.tgz | grep -E 'commands/|node-version-check|user-scope'
+# 包内容审计：dist/skills/*.md.tmpl 全在；commands/ slash 命令模板不在
+npm pack tapd-server-cli@0.4.1
+tar -tzf tapd-server-cli-0.4.1.tgz | grep -E 'skills/|commands/|node-version-check'
 # 期望含：
-#   package/dist/commands/{login,logout,update}-handler.{js,d.ts,js.map}
-#   package/dist/runtime/node-version-check.{js,d.ts}  (v0.3.1+)
+#   package/dist/skills/tapd-*.md.tmpl (10 个)
+#   package/dist/commands/{login,logout,update,install-skills,uninstall-skills}-handler.{js,d.ts}
+#   package/dist/runtime/node-version-check.{js,d.ts}
 # 期望不含：
-#   package/commands/                  (v0.3.2 起从 npm 包移除)
-#   package/dist/installer/user-scope-commands.* (v0.3.2 起源文件已删)</code></pre>
+#   package/commands/                  (v0.3.2 起从 npm 包移除)</code></pre>
 
   <h4>验证点 <span class="badge badge-ok">PASS 标准</span></h4>
   <ul>
@@ -930,8 +981,8 @@ tar -tzf tapd-server-cli-0.3.2.tgz | grep -E 'commands/|node-version-check|user-
 <h3 id="m-release" class="anchor-target">GitHub Release</h3>
 
 <div class="step">
-<pre><code>gh release view v0.3.2 --json name,tagName,createdAt,isDraft,body
-# 期望：isDraft=false，body 包含 CHANGELOG [0.3.2] 段</code></pre>
+<pre><code>gh release view v0.4.1 --json name,tagName,createdAt,isDraft,body
+# 期望：isDraft=false，body 包含 CHANGELOG [0.4.1] 段</code></pre>
 
   <h4>验证点 <span class="badge badge-ok">PASS 标准</span></h4>
   <ul>
@@ -1032,7 +1083,7 @@ npm run build        # tsc + node scripts/copy-skills.mjs (10 个模板拷到 di
 npm test             # vitest unit
 npx vitest run --config vitest.integration.config.ts   # integration</code></pre>
 
-  <h4>当前基线（v0.3.3 + add-mcp-skills 全部任务完成时）</h4>
+  <h4>当前基线（v0.4.1）</h4>
   <ul>
     <li>typecheck：干净，0 error</li>
     <li>build：拷贝输出 <code>[copy-skills] copied 10 template(s) to .../dist/skills</code></li>
@@ -1132,40 +1183,26 @@ ls openspec/specs/
 
 <div class="step">
 <pre><code>npx openspec list --json
-# 期望：{"changes":[]}（active changes 应在每次发版前归档）
+# 期望：{"changes":[]}（无 active change）
 
 ls openspec/changes/archive/ | wc -l
-# 期望：≥6（v0.3.0 三连 + v0.3.1/v0.3.2 hotfix + add-mcp-skills 等）
+# 期望：≥6（v0.3.0 三连 + add-mcp-skills + 其它 hotfix 等）
 
 ls openspec/specs/
-# 期望：≥7 个 capability 目录，含新加的 mcp-skills/，无 claude-code-plugin/
-
-# add-mcp-skills 变更专项
-openspec validate add-mcp-skills --strict
-# 期望：Change 'add-mcp-skills' is valid
-
-openspec status --change add-mcp-skills
-# 期望：4/4 artifacts complete (proposal/design/specs/tasks 全 [x])</code></pre>
+# 期望：≥8 个 capability 目录，含 mcp-skills/，无 claude-code-plugin/</code></pre>
 
   <h4>验证点 <span class="badge badge-ok">PASS 标准</span></h4>
   <ul>
-    <li>active changes = 0（add-mcp-skills 发版后归档；归档前可保留）</li>
-    <li>v0.3.0 三个 change 已 archive 到 <code>archive/2026-05-29-*</code></li>
-    <li>add-mcp-skills 完成时归档到 <code>archive/&lt;YYYY-MM-DD&gt;-add-mcp-skills/</code></li>
+    <li>active changes = 0（add-mcp-skills 已归档到 <code>archive/2026-06-03-add-mcp-skills/</code>）</li>
+    <li>主 specs 含 <code>mcp-skills/</code>（v0.4.0 归档后同步，含 MVP skill 清单、双语 description、HARD-RULE-1..5、install-skills/uninstall-skills 子命令等）</li>
+    <li>主 specs 含 <code>installer-cli/</code>，新增"install 与 install-skills 流程隔离"+"switch-role 占位"2 条 Requirement</li>
+    <li>主 specs <code>mcp-server-runtime/</code> 的"启动顺序"Requirement 含步骤 7（异步写 cache.json）</li>
     <li>主 specs 不再含 <code>claude-code-plugin/</code></li>
-    <li>主 specs 含 <code>installer-cli/</code>，且 v0.3.2 已删除"user-scope commands"4 条已撤回的 Requirement</li>
-    <li><strong>add-mcp-skills 归档后</strong>，主 specs 含 <code>mcp-skills/</code>（含 18 条 ADDED Requirements：MVP skill 清单、双语 description、HARD-RULE-1..5、install-skills/uninstall-skills 子命令、tapd.config.json schema、cache.json schema、跨客户端落地等）</li>
-    <li><strong>add-mcp-skills 归档后</strong>，<code>installer-cli/</code> 主 spec 加入"install 与 install-skills 流程隔离"+"switch-role 占位"2 条 Requirement；<code>mcp-server-runtime/</code> 主 spec 的"启动顺序"Requirement 增加步骤 7（异步写 cache.json）</li>
   </ul>
 
-  <div class="callout warn" style="margin-top: 16px;">
-    <div class="callout-title">v0.3.2 没走 OpenSpec change 流程</div>
-    v0.3.2 撤回（user-scope commands）通过直接编辑 <code>openspec/specs/installer-cli/spec.md</code> 删除 4 条已撤回的 Requirement 实现，并未走 <code>openspec new-change</code> → archive 流程。原因：纯 revert + 文档重排，不引入新 capability。如未来再有类似系统性 revert，可考虑统一走 <code>revert-&lt;feature&gt;</code> change 命名。
-  </div>
-
   <div class="callout tip" style="margin-top: 16px;">
-    <div class="callout-title">add-mcp-skills 走完整 OpenSpec 流程</div>
-    <code>add-mcp-skills</code> 是 add-skill 体系的源头变更，4/4 工件齐全（proposal / design / specs / tasks）；74/74 任务全部完成 + 488 个测试（479 单测 + 9 集成）+ <code>openspec validate --strict</code> 通过。归档命令：<code>openspec archive add-mcp-skills --yes</code>（仅在 release 之后跑，避免归档后再改 spec 走得太绕）。
+    <div class="callout-title">add-mcp-skills 已完整归档</div>
+    <code>add-mcp-skills</code> 4/4 工件齐全（proposal / design / specs / tasks）；74/74 任务完成 + 479 单测 + 9 集成测试通过，已归档到 <code>openspec/changes/archive/2026-06-03-add-mcp-skills/</code>。
   </div>
 </div>
 
@@ -1221,7 +1258,7 @@ rm -rf ~/.claude/commands/tapd-server-cli/</code></pre>
 <hr class="section-sep">
 
 <div class="meta-bar">
-  <p><strong>本文档生成时间：</strong>2026-06-02 ｜ <strong>对应代码版本：</strong>v0.3.3 已发布到 npm（tag <code>v0.3.3</code>）+ <code>add-mcp-skills</code> 变更已完成 74/74 实施任务、OpenSpec 4/4 工件 valid，待随下一次 patch 一并发版 ｜ <strong>文件名：</strong><code>docs/v0.3.x-verification.html</code>（v0.3.x 系列共用）｜ <strong>反馈渠道：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/issues">GitHub Issues</a></p>
+  <p><strong>本文档生成时间：</strong>2026-06-04 ｜ <strong>对应代码版本：</strong>v0.4.1（已发布到 npm，tag <code>v0.4.1</code>）+ <code>add-mcp-skills</code> 变更已归档（<code>openspec/changes/archive/2026-06-03-add-mcp-skills/</code>）｜ <strong>文件名：</strong><code>docs/v0.3.x-verification.html</code>（v0.3.x / v0.4.x 系列共用）｜ <strong>反馈渠道：</strong><a href="https://github.com/wanggan768q/tapd-server-cli/issues">GitHub Issues</a></p>
 </div>
 
 </main>
