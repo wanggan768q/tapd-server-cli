@@ -14,6 +14,30 @@
 
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
+## [0.4.2] - 2026-06-04
+
+### Fixed
+
+- **Windows `update` 子命令报 `spawnSync npm.cmd EINVAL`**：自 Node.js
+  CVE-2024-27980 安全补丁起，`spawnSync('npm.cmd', ..., { shell: false })` 在
+  Win32 上会直接抛 `EINVAL`。`update` 命令调 `npm view` 拿最新版本号时正好踩这个
+  坑，表现为永远走 `× Network error` 分支。改为 win32 下统一通过
+  `cmd.exe /c npm view ...` 调用：cmd.exe 自身是 shell，按 PATHEXT 解析 `.cmd`
+  shim，Node 内部对 args 数组按 cmd.exe 规则做 quoting / escape，零注入面。
+- **Windows `install` 流程对 `claude` / `codex` 官方 CLI 的探测同样踩 EINVAL**：
+  `installer/claude-cli.ts` 与 `installer/codex-cli.ts` 也用 `spawnSync` 直跑
+  `claude.cmd` / `codex.cmd` + `shell: false`，被同一个 Node 安全补丁拦下后
+  `isAvailable()` 永远返回 false，安装流程一律降级到手写文件 fallback。修复
+  后会优先调用官方 CLI（带 PAT 的 args 仍走数组、由 Node 的 cmd.exe escape
+  保护，无注入面）。
+
+### Internal
+
+- `installer/flow.ts` 的 `RunInstallOptions` 新增可选 `claudeCliProbe` /
+  `codexCliProbe` 测试钩子；`installer-flow.test.ts` 的多客户端编排测试改为
+  显式注入 `isAvailable: () => false` probe，不再隐式依赖"本机没装 claude/codex
+  CLI"。
+
 ## [0.4.1] - 2026-06-03
 
 ### Fixed

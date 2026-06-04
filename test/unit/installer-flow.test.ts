@@ -174,6 +174,19 @@ describe('runInstall — multi-client orchestration', () => {
   let claudePath: string;
   let codexPath: string;
 
+  // 强制走手写文件 fallback 路径，使测试不依赖本机是否安装 claude/codex CLI。
+  // 不注入会让结果取决于 PATH 上是否能跑 `claude --version` / `codex --version`。
+  const fallbackProbes = {
+    claudeCliProbe: {
+      isAvailable: () => false,
+      addJson: () => ({ ok: false, stderr: '' }),
+    },
+    codexCliProbe: {
+      isAvailable: () => false,
+      addStdio: () => ({ ok: false, stderr: '' }),
+    },
+  };
+
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'tapd-flow-multi-'));
     claudePath = join(dir, 'claude.json');
@@ -195,6 +208,7 @@ describe('runInstall — multi-client orchestration', () => {
       stdout,
       stderr,
       tokenOverride: 'shared-token',
+      ...fallbackProbes,
     });
     expect(result.exitCode).toBe(0);
     expect(result.results).toHaveLength(2);
@@ -225,6 +239,7 @@ describe('runInstall — multi-client orchestration', () => {
       stdout,
       stderr,
       tokenOverride: 'token-xyz',
+      ...fallbackProbes,
     });
 
     expect(result.exitCode).toBe(1);
@@ -250,6 +265,7 @@ describe('runInstall — multi-client orchestration', () => {
       dryRun: true,
       ...fakeStdio(),
       tokenOverride: 'token-xyz',
+      ...fallbackProbes,
     });
     expect(result.exitCode).toBe(0);
     expect(result.results.every((r) => r.outcome === 'dry-run')).toBe(true);
@@ -264,6 +280,7 @@ describe('runInstall — multi-client orchestration', () => {
       dryRun: false,
       ...fakeStdio(),
       tokenOverride: 't',
+      ...fallbackProbes,
     });
     // 第二遍同 token —— 都应该是 noop
     const result = await runInstall({
@@ -271,6 +288,7 @@ describe('runInstall — multi-client orchestration', () => {
       dryRun: false,
       ...fakeStdio(),
       tokenOverride: 't',
+      ...fallbackProbes,
     });
     expect(result.exitCode).toBe(0);
     expect(result.results.every((r) => r.outcome === 'noop')).toBe(true);

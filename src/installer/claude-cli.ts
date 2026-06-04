@@ -8,16 +8,19 @@
  *   - PAT 走 args 数组不经 shell expansion，不进 shell history
  *   - stderr 必须脱敏：抛错时移除任何 TAPD_TOKEN 值
  *
- * Windows 兼容（B1 修复）：npm 全局安装的 `claude` 实际是 `claude.cmd`，
- *   spawnSync 在 `shell: false` 下不走 PATHEXT 解析会 ENOENT。这里在 win32
- *   上按顺序尝试 `claude.cmd` → `claude.ps1` → `claude.exe` → `claude`，
- *   命中即用其名启动；仍保持 `shell: false` 不引入 shell 注入面。
+ * Windows 兼容（v0.4.2 修复）：自 Node.js 安全补丁 (CVE-2024-27980) 起，
+ *   `spawnSync('claude.cmd', ..., { shell: false })` 会直接抛 EINVAL，
+ *   且 `shell: true` + 含 PAT 的 args 是命令注入风险。统一改为
+ *   `spawnSync('cmd.exe', ['/c', 'claude', ...args], { shell: false })`：
+ *   cmd.exe 自身是 shell，会按 PATHEXT 解析 `claude.cmd`/`claude.ps1`/`claude.exe`，
+ *   而 Node 内部对 args 数组按 cmd.exe 规则做 quoting/escape，零注入面。
+ *   非 win32 仍按原 POSIX 路径直跑 `claude`。
  *
  * Note: preferClaudeCliInstall 顶层包 try/catch 把注入式 probe 的 throw 转成
  *       fallback + redacted stderr，确保对外"永不抛"契约（与 codex-cli 对称）。
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncOptions } from 'node:child_process';
 
 import { redact, redactError } from './redact.js';
 
@@ -37,44 +40,45 @@ export interface ClaudeCliProbe {
 
 const SPAWN_TIMEOUT_MS = 5000;
 
+function isWin32(): boolean {
+  return (process.env.TAPD_TEST_PLATFORM ?? process.platform) === 'win32';
+}
+
 /**
- * Windows 上 `claude` 可能是 `claude.cmd`/`claude.ps1`/`claude.exe`；
- * spawnSync 在 `shell: false` 下不走 PATHEXT 解析，bare `'claude'` 会 ENOENT。
- * 这里用候选名顺序探测，第一个 `--version` 退 0 的就是它。
+ * win32 下统一用 `cmd.exe /c <bin> ...args` 调 npm 全局安装的 Node CLI shim。
+ * 直接 spawn `bin.cmd` 在 shell:false 下会触发 EINVAL（Node CVE-2024-27980 补丁后），
+ * 而 shell:true 会让 args 受 cmd.exe 命令行解析影响、含 PAT 时形成注入面。
+ *
+ * 这里把 cmd.exe 自身当作可执行体，args 数组通过 Node 的内部 win32 escape
+ * 模块传入；返回的 [executable, args] 直接喂 spawnSync 即可。
+ */
+function buildSpawnArgs(bin: string, args: readonly string[]): [string, string[]] {
+  if (isWin32()) {
+    return ['cmd.exe', ['/c', bin, ...args]];
+  }
+  return [bin, [...args]];
+}
+
+/**
+ * Windows 上 `claude` 由 npm 全局安装时实际是 `claude.cmd`/`claude.ps1`/`claude.exe`；
+ * 走 `cmd.exe /c claude` 让 cmd.exe 自己按 PATHEXT 解析候选名，无需我们逐个探测。
  *
  * 测试钩子：`process.env.TAPD_TEST_PLATFORM` 可被设为 'win32' / 'linux' / 'darwin'
  * 强制走指定分支，便于跨平台单测。
  */
-function resolveClaudeBinaryName(): string {
-  const platform = process.env.TAPD_TEST_PLATFORM ?? process.platform;
-  if (platform !== 'win32') return 'claude';
-  const candidates = ['claude.cmd', 'claude.ps1', 'claude.exe', 'claude'];
-  for (const name of candidates) {
-    try {
-      const r = spawnSync(name, ['--version'], {
-        stdio: 'ignore',
-        timeout: SPAWN_TIMEOUT_MS,
-        shell: false,
-      });
-      if (r.status === 0) return name;
-    } catch {
-      // 试下一个候选名
-    }
-  }
-  return 'claude'; // 都不可用时仍返回 'claude'，让上层 isAvailable() 报告 false
-}
 
 /** 默认实现：spawn 真实 `claude` 子进程 */
 export function defaultClaudeCliProbe(): ClaudeCliProbe {
-  const bin = resolveClaudeBinaryName();
   return {
     isAvailable() {
       try {
-        const r = spawnSync(bin, ['--version'], {
+        const [exe, exeArgs] = buildSpawnArgs('claude', ['--version']);
+        const opts: SpawnSyncOptions = {
           stdio: 'ignore',
           timeout: SPAWN_TIMEOUT_MS,
           shell: false,
-        });
+        };
+        const r = spawnSync(exe, exeArgs, opts);
         return r.status === 0;
       } catch {
         return false;
@@ -82,16 +86,17 @@ export function defaultClaudeCliProbe(): ClaudeCliProbe {
     },
     addJson(name, json, scope) {
       try {
-        const r = spawnSync(
-          bin,
+        const [exe, exeArgs] = buildSpawnArgs(
+          'claude',
           ['mcp', 'add-json', name, json, '--scope', scope],
-          {
-            stdio: ['ignore', 'pipe', 'pipe'],
-            timeout: SPAWN_TIMEOUT_MS,
-            encoding: 'utf8',
-            shell: false,
-          },
         );
+        const opts: SpawnSyncOptionsWithStringEncoding = {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: SPAWN_TIMEOUT_MS,
+          encoding: 'utf8',
+          shell: false,
+        };
+        const r = spawnSync(exe, exeArgs, opts);
         return {
           ok: r.status === 0,
           stderr: typeof r.stderr === 'string' ? r.stderr : '',

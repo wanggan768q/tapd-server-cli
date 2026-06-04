@@ -13,8 +13,8 @@ import { cursorAdapter } from './adapters/cursor.js';
 import { opencodeAdapter } from './adapters/opencode.js';
 import { promptToken, TokenInputError, type PromptOptions } from './prompt.js';
 import { type ClientAdapter } from './adapter.js';
-import { preferClaudeCliInstall } from './claude-cli.js';
-import { preferCodexCliInstall } from './codex-cli.js';
+import { preferClaudeCliInstall, type ClaudeCliProbe } from './claude-cli.js';
+import { preferCodexCliInstall, type CodexCliProbe } from './codex-cli.js';
 
 const ALL_ADAPTERS: Record<string, ClientAdapter> = {
   [claudeCodeAdapter.key]: claudeCodeAdapter,
@@ -48,6 +48,13 @@ export interface RunInstallOptions {
   stderr?: NodeJS.WritableStream;
   /** 测试用：覆盖 token 输入（跳过交互） */
   tokenOverride?: string;
+  /**
+   * 测试钩子：注入 claude / codex CLI 探针，绕过本机环境差异（是否安装了 claude/codex）。
+   * 默认走真实 spawn 探测；测试默认应注入 isAvailable: false 强制走手写文件 fallback 路径。
+   * 不传时维持生产语义（自动探测）。
+   */
+  claudeCliProbe?: ClaudeCliProbe;
+  codexCliProbe?: CodexCliProbe;
 }
 
 export interface RunInstallResult {
@@ -153,8 +160,8 @@ export async function runInstall(opts: RunInstallOptions): Promise<RunInstallRes
     if (!opts.dryRun && (key === 'claude-code' || key === 'codex')) {
       const cliResult =
         key === 'claude-code'
-          ? await preferClaudeCliInstall(tapdEnv)
-          : await preferCodexCliInstall(tapdEnv);
+          ? await preferClaudeCliInstall(tapdEnv, opts.claudeCliProbe)
+          : await preferCodexCliInstall(tapdEnv, opts.codexCliProbe);
       if (cliResult.used === 'cli') {
         const via =
           key === 'claude-code'

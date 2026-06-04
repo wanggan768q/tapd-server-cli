@@ -73,14 +73,34 @@ function resolveNpmBinaryName(): string {
   return 'npm.cmd';
 }
 
+function isWin32(): boolean {
+  return (process.env.TAPD_TEST_PLATFORM ?? process.platform) === 'win32';
+}
+
+/**
+ * win32 下统一用 `cmd.exe /c npm ...args` 调 .cmd shim：
+ *   - 直接 spawn `npm.cmd` + shell:false 会触发 EINVAL (Node CVE-2024-27980 补丁后)
+ *   - shell:true 会让 args 受 cmd.exe 命令行解析影响，未来若 args 变 user-supplied 是注入面
+ *   - cmd.exe 自身是 shell，会按 PATHEXT 解析 `npm.cmd`，
+ *     Node 内部对 args 数组按 cmd.exe 规则 quoting，零注入面
+ * 与 installer/claude-cli.ts、installer/codex-cli.ts 的 buildSpawnArgs 对称。
+ */
+function buildSpawnArgs(bin: string, args: readonly string[]): [string, string[]] {
+  if (isWin32()) {
+    // 注意：win32 分支直接用裸名 'npm'，让 cmd.exe 按 PATHEXT 解析为 .cmd。
+    // 不再需要 resolveNpmBinaryName() 返回的 'npm.cmd'。
+    const baseName = bin.replace(/\.cmd$/i, '');
+    return ['cmd.exe', ['/c', baseName, ...args]];
+  }
+  return [bin, [...args]];
+}
+
 function defaultFetchLatestVersion(): string {
   const bin = resolveNpmBinaryName();
-  // 与 src/installer/claude-cli.ts 保持同款 spawn 模板：shell:false 不经
-  // shell expansion，零注入面（args 当前都是字面常量；如果将来这里参数
-  // 变成 user-supplied，shell:true 路径会立刻成 shell 注入风险）。
-  // win32 下 npm 真实可执行是 npm.cmd，由 resolveNpmBinaryName() 在 PATHEXT
-  // 之外显式补 .cmd 后缀让 spawnSync(shell:false) 也能找到。
-  const r = spawnSync(bin, ['view', 'tapd-server-cli', 'version'], {
+  // win32 → cmd.exe /c npm view ...；其他平台 → npm view ...
+  // 详见 buildSpawnArgs 注释。
+  const [exe, exeArgs] = buildSpawnArgs(bin, ['view', 'tapd-server-cli', 'version']);
+  const r = spawnSync(exe, exeArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: SPAWN_TIMEOUT_MS,
     encoding: 'utf8',
