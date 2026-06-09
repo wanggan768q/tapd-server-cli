@@ -64,6 +64,30 @@ TAPD uses `[~user_name]` (literal characters) where `user_name` is the
    Don't guess; a wrong @ silently fails (TAPD just renders the literal
    text without notifying anyone).
 
+## HTML 格式要求（必须遵守）
+
+TAPD 评论的 `description` 字段**必须使用 HTML 格式**，不接受纯文本或 Markdown。
+在发送任何评论之前，将用户提供的内容转换为合法的 HTML：
+
+| 用户内容 | 转换为 HTML |
+|---|---|
+| 普通文本（无换行） | `<p>文本</p>` |
+| 多段落 / 换行 | 每段用 `<p>...</p>` 包裹 |
+| `**粗体**` | `<b>粗体</b>` |
+| `*斜体*` | `<i>斜体</i>` |
+| `` `代码` `` | `<code>代码</code>` |
+| 代码块 ` ```...``` ` | `<pre><code>...</code></pre>` |
+| 无序列表 `- item` | `<ul><li>item</li></ul>` |
+| 有序列表 `1. item` | `<ol><li>item</li></ol>` |
+| 链接 `[text](url)` | `<a href="url">text</a>` |
+| `@mention` | `[~user_name]`（保持 TAPD mention 格式，不转换为 HTML） |
+
+**示例**：用户说"请确认一下，`foo()` 返回值有问题"，发送：
+
+```html
+<p>请确认一下，<code>foo()</code> 返回值有问题</p>
+```
+
 ## Send immediately, report after
 
 Comments don't need a preview block. Just call the tool, then:
@@ -76,9 +100,7 @@ Comments don't need a preview block. Just call the tool, then:
 ## Edge cases
 
 - **Empty description** → refuse, ask the user what to say.
-- **Description contains markdown** → TAPD evaluates it as **HTML**, not
-  markdown. Convert obvious markdown (e.g., `**bold**` → `<b>...</b>`) or
-  warn the user "这条会以 HTML 解析，markdown 可能不渲染——要我转一下吗？"
+- **Description contains markdown** → 自动转换为 HTML（见上方 HTML 格式要求），无需询问用户。
 - **User says "delete the comment"** → not supported (HARD-RULE-1). Tell
   user: "评论一旦发出，我无法删除。请在 TAPD 网页端手动删除/编辑。"
 - **Multiple targets in one message** ("给 #1234 和 #5678 都评论") → split
