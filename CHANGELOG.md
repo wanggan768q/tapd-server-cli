@@ -14,6 +14,14 @@
 
 <!-- 下一版本的变更草稿,合并到 main 时累积。发版时由 publish 流程移到 [<version>]。 -->
 
+## [0.4.3] - 2026-06-09
+
+### Changed
+
+- **`tapd-comment-and-mention` 技能**：新增 HTML 格式要求章节，明确 `description`
+  字段必须使用 HTML（非纯文本或 Markdown）。提供完整的 Markdown→HTML 转换对照表
+  及示例；Markdown 内容现在自动转换，不再询问用户确认。
+
 ## [0.4.2] - 2026-06-04
 
 ### Fixed
